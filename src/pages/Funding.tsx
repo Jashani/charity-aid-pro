@@ -1,8 +1,6 @@
 import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -13,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { PoundSterling, Search, AlertTriangle, RefreshCw, CalendarDays } from "lucide-react";
+import { PoundSterling, Search, AlertTriangle, RefreshCw } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import {
   mockActiveFunding,
@@ -42,12 +40,26 @@ const Funding = () => {
     return result;
   }, [searchTerm, typeFilter]);
 
+  const getRowStyle = (daysLeft: number) => {
+    if (daysLeft <= 30) return "bg-destructive/8 border-l-4 border-l-destructive";
+    if (daysLeft <= 90) return "bg-warning/8 border-l-4 border-l-warning";
+    return "";
+  };
+
+  const getTimeLabel = (daysLeft: number) => {
+    if (daysLeft <= 0) return { text: "Expired", variant: "destructive" as const };
+    if (daysLeft <= 30) return { text: `${daysLeft} days — Urgent`, variant: "destructive" as const };
+    if (daysLeft <= 90) return { text: `${daysLeft} days — Expiring soon`, variant: "secondary" as const };
+    const months = Math.round(daysLeft / 30);
+    return { text: `${months} months left`, variant: "outline" as const };
+  };
+
   return (
     <DashboardLayout>
       <div className="space-y-6 max-w-6xl">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Active Funding</h1>
-          <p className="text-muted-foreground mt-1">Track your current grants and their timelines.</p>
+          <p className="text-muted-foreground mt-1">Your current grants at a glance. Red rows need urgent attention.</p>
         </div>
 
         {/* Summary Cards */}
@@ -115,56 +127,38 @@ const Funding = () => {
               <TableRow>
                 <TableHead>Funder</TableHead>
                 <TableHead>Amount</TableHead>
-                <TableHead>Timeline</TableHead>
-                <TableHead className="w-[200px]">Progress</TableHead>
+                <TableHead>Period</TableHead>
+                <TableHead>Time Remaining</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map((fund) => {
-                const progress = getFundingProgress(fund.startDate, fund.endDate);
                 const remaining = daysUntil(fund.endDate);
-                const isExpiring = remaining <= 90 && remaining > 0;
+                const timeLabel = getTimeLabel(remaining);
                 return (
-                  <TableRow key={fund.id}>
+                  <TableRow key={fund.id} className={getRowStyle(remaining)}>
                     <TableCell>
-                      <div>
-                        <p className="font-medium">{fund.funderName}</p>
-                        <p className="text-xs text-muted-foreground">{fund.programName}</p>
-                      </div>
+                      <p className="font-medium">{fund.funderName}</p>
+                      <p className="text-xs text-muted-foreground">{fund.programName}</p>
                     </TableCell>
                     <TableCell className="font-semibold">{formatCurrency(fund.amount)}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <CalendarDays className="h-3 w-3" />
-                        {new Date(fund.startDate).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}
-                        {" – "}
-                        {new Date(fund.endDate).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">{remaining} days left</p>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {new Date(fund.startDate).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}
+                      {" – "}
+                      {new Date(fund.endDate).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}
                     </TableCell>
                     <TableCell>
-                      <Progress
-                        value={progress}
-                        className={`h-2 ${isExpiring ? "[&>div]:bg-destructive" : "[&>div]:bg-primary"}`}
-                      />
+                      <Badge variant={timeLabel.variant} className="text-xs">
+                        {timeLabel.text}
+                      </Badge>
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-col gap-1">
-                        {isExpiring && (
-                          <Badge variant="destructive" className="text-xs w-fit">
-                            Expiring Soon
-                          </Badge>
-                        )}
-                        {fund.renewalEligible && (
-                          <Badge variant="secondary" className="text-xs w-fit">
-                            Renewable
-                          </Badge>
-                        )}
-                        {!isExpiring && !fund.renewalEligible && (
-                          <Badge variant="outline" className="text-xs w-fit">Active</Badge>
-                        )}
-                      </div>
+                      {fund.renewalEligible ? (
+                        <Badge variant="secondary" className="text-xs">Renewable</Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-xs">Active</Badge>
+                      )}
                     </TableCell>
                   </TableRow>
                 );
