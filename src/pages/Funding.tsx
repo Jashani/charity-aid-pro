@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -17,7 +17,6 @@ import {
   mockActiveFunding,
   formatCurrency,
   daysUntil,
-  getFundingProgress,
 } from "@/lib/mock-data";
 
 const Funding = () => {
@@ -41,59 +40,45 @@ const Funding = () => {
   }, [searchTerm, typeFilter]);
 
   const getRowStyle = (daysLeft: number) => {
-    if (daysLeft <= 30) return "bg-destructive/8 border-l-4 border-l-destructive";
-    if (daysLeft <= 90) return "bg-warning/8 border-l-4 border-l-warning";
+    if (daysLeft <= 30) return "bg-destructive/5 border-l-4 border-l-destructive";
+    if (daysLeft <= 90) return "bg-warning/5 border-l-4 border-l-warning";
     return "";
   };
 
   const getTimeLabel = (daysLeft: number) => {
     if (daysLeft <= 0) return { text: "Expired", variant: "destructive" as const };
-    if (daysLeft <= 30) return { text: `${daysLeft} days — Urgent`, variant: "destructive" as const };
-    if (daysLeft <= 90) return { text: `${daysLeft} days — Expiring soon`, variant: "secondary" as const };
+    if (daysLeft <= 30) return { text: `${daysLeft}d — Urgent`, variant: "destructive" as const };
+    if (daysLeft <= 90) return { text: `${daysLeft}d — Expiring`, variant: "secondary" as const };
     const months = Math.round(daysLeft / 30);
-    return { text: `${months} months left`, variant: "outline" as const };
+    return { text: `${months} months`, variant: "outline" as const };
   };
 
   return (
     <DashboardLayout>
-      <div className="space-y-6 max-w-6xl">
+      <div className="space-y-6 max-w-5xl">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Active Funding</h1>
-          <p className="text-muted-foreground mt-1">Your current grants at a glance. Red rows need urgent attention.</p>
+          <p className="text-muted-foreground mt-1">Your current grants. Red rows need urgent attention.</p>
         </div>
 
-        {/* Summary Cards */}
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Active</CardTitle>
-              <PoundSterling className="h-4 w-4 text-primary" />
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{formatCurrency(total)}</p>
-              <p className="text-xs text-muted-foreground mt-1">{mockActiveFunding.length} grants</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Expiring Soon</CardTitle>
-              <AlertTriangle className="h-4 w-4 text-destructive" />
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{expiringSoon.length}</p>
-              <p className="text-xs text-muted-foreground mt-1">Within 3 months</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Renewal Eligible</CardTitle>
-              <RefreshCw className="h-4 w-4 text-secondary" />
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{renewableCount}</p>
-              <p className="text-xs text-muted-foreground mt-1">Can be renewed</p>
-            </CardContent>
-          </Card>
+        {/* Summary */}
+        <div className="grid gap-4 sm:grid-cols-3">
+          {[
+            { label: "Total Active", value: formatCurrency(total), sub: `${mockActiveFunding.length} grants`, icon: PoundSterling, color: "text-primary" },
+            { label: "Expiring Soon", value: expiringSoon.length, sub: "Within 3 months", icon: AlertTriangle, color: "text-destructive" },
+            { label: "Renewable", value: renewableCount, sub: "Can be renewed", icon: RefreshCw, color: "text-secondary" },
+          ].map((s) => (
+            <Card key={s.label} className="hover:shadow-md transition-shadow">
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{s.label}</span>
+                  <s.icon className={`h-4 w-4 ${s.color}`} />
+                </div>
+                <p className="text-2xl font-bold">{s.value}</p>
+                <p className="text-xs text-muted-foreground mt-1">{s.sub}</p>
+              </CardContent>
+            </Card>
+          ))}
         </div>
 
         {/* Filters */}
@@ -104,11 +89,11 @@ const Funding = () => {
               placeholder="Search funders..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9"
+              className="pl-9 rounded-xl"
             />
           </div>
           <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-40">
+            <SelectTrigger className="w-40 rounded-xl">
               <SelectValue placeholder="All types" />
             </SelectTrigger>
             <SelectContent>
@@ -121,15 +106,15 @@ const Funding = () => {
         </div>
 
         {/* Table */}
-        <Card>
+        <Card className="overflow-hidden rounded-xl">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>Funder</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Period</TableHead>
-                <TableHead>Time Remaining</TableHead>
-                <TableHead>Status</TableHead>
+              <TableRow className="bg-muted/50">
+                <TableHead className="text-xs uppercase tracking-wider">Funder</TableHead>
+                <TableHead className="text-xs uppercase tracking-wider">Amount</TableHead>
+                <TableHead className="text-xs uppercase tracking-wider">Period</TableHead>
+                <TableHead className="text-xs uppercase tracking-wider">Time Left</TableHead>
+                <TableHead className="text-xs uppercase tracking-wider">Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -139,25 +124,25 @@ const Funding = () => {
                 return (
                   <TableRow key={fund.id} className={getRowStyle(remaining)}>
                     <TableCell>
-                      <p className="font-medium">{fund.funderName}</p>
+                      <p className="font-medium text-sm">{fund.funderName}</p>
                       <p className="text-xs text-muted-foreground">{fund.programName}</p>
                     </TableCell>
-                    <TableCell className="font-semibold">{formatCurrency(fund.amount)}</TableCell>
+                    <TableCell className="font-semibold text-sm">{formatCurrency(fund.amount)}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {new Date(fund.startDate).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}
                       {" – "}
                       {new Date(fund.endDate).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={timeLabel.variant} className="text-xs">
+                      <Badge variant={timeLabel.variant} className="text-xs rounded-full">
                         {timeLabel.text}
                       </Badge>
                     </TableCell>
                     <TableCell>
                       {fund.renewalEligible ? (
-                        <Badge variant="secondary" className="text-xs">Renewable</Badge>
+                        <Badge variant="secondary" className="text-xs rounded-full">Renewable</Badge>
                       ) : (
-                        <Badge variant="outline" className="text-xs">Active</Badge>
+                        <Badge variant="outline" className="text-xs rounded-full">Active</Badge>
                       )}
                     </TableCell>
                   </TableRow>

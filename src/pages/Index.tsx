@@ -1,4 +1,4 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -9,8 +9,7 @@ import {
   AlertTriangle,
   ArrowRight,
   TrendingUp,
-  CalendarDays,
-  Star,
+  Sparkles,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { DashboardLayout } from "@/components/DashboardLayout";
@@ -36,150 +35,90 @@ const Index = () => {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6 max-w-6xl">
+      <div className="space-y-8 max-w-5xl">
+        {/* Hero */}
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground mt-1">
-            Welcome back. Here's your funding overview for today.
-          </p>
+          <h1 className="text-3xl font-bold tracking-tight">Good morning 👋</h1>
+          <p className="text-muted-foreground mt-1">Here's your funding overview.</p>
         </div>
 
         {/* Urgent Alerts */}
         {(urgentDeadlines.length > 0 || expiringSoon.length > 0) && (
-          <Card className="border-warning/50 bg-warning/5">
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="h-5 w-5 text-warning mt-0.5 shrink-0" />
-                <div className="space-y-1">
-                  <p className="font-semibold text-sm">Attention Needed</p>
-                  {urgentDeadlines.map((o) => (
-                    <p key={o.id} className="text-sm text-muted-foreground">
-                      <span className="font-medium text-foreground">{o.funderName}</span> deadline in{" "}
-                      <Badge variant="destructive" className="text-xs px-1.5 py-0">
-                        {daysUntil(o.deadline)} days
-                      </Badge>
-                    </p>
-                  ))}
-                  {expiringSoon.map((f) => (
-                    <p key={f.id} className="text-sm text-muted-foreground">
-                      <span className="font-medium text-foreground">{f.funderName}</span> funding expires in{" "}
-                      {daysUntil(f.endDate)} days
-                      {f.renewalEligible && (
-                        <Badge variant="secondary" className="ml-1 text-xs px-1.5 py-0">
-                          Renewal eligible
-                        </Badge>
-                      )}
-                    </p>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-4 flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-destructive mt-0.5 shrink-0" />
+            <div className="space-y-1.5">
+              <p className="font-semibold text-sm">Needs attention</p>
+              {urgentDeadlines.map((o) => (
+                <p key={o.id} className="text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">{o.funderName}</span> — deadline in{" "}
+                  <span className="text-destructive font-semibold">{daysUntil(o.deadline)}d</span>
+                </p>
+              ))}
+              {expiringSoon.map((f) => (
+                <p key={f.id} className="text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">{f.funderName}</span> — funding expires in {daysUntil(f.endDate)}d
+                  {f.renewalEligible && (
+                    <Badge variant="secondary" className="ml-2 text-[10px] py-0">Renewable</Badge>
+                  )}
+                </p>
+              ))}
+            </div>
+          </div>
         )}
 
-        {/* Summary Cards */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Active Funding</CardTitle>
-              <PoundSterling className="h-4 w-4 text-primary" />
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{formatCurrency(totalActive)}</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                {mockActiveFunding.length} active grants
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Upcoming Deadlines</CardTitle>
-              <Clock className="h-4 w-4 text-warning" />
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{upcomingDeadlines.length}</p>
-              <p className="text-xs text-muted-foreground mt-1">Within the next 30 days</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">New Opportunities</CardTitle>
-              <Search className="h-4 w-4 text-secondary" />
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{newOpportunities.length}</p>
-              <p className="text-xs text-muted-foreground mt-1">Discovered this week</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Expiring Soon</CardTitle>
-              <AlertTriangle className="h-4 w-4 text-destructive" />
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{expiringSoon.length}</p>
-              <p className="text-xs text-muted-foreground mt-1">Within 3 months</p>
-            </CardContent>
-          </Card>
+        {/* Stat Cards */}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            { label: "Active Funding", value: formatCurrency(totalActive), sub: `${mockActiveFunding.length} grants`, icon: PoundSterling, color: "text-primary" },
+            { label: "Upcoming Deadlines", value: upcomingDeadlines.length, sub: "Next 30 days", icon: Clock, color: "text-warning" },
+            { label: "New Opportunities", value: newOpportunities.length, sub: "Discovered this week", icon: Sparkles, color: "text-secondary" },
+            { label: "Expiring Soon", value: expiringSoon.length, sub: "Within 3 months", icon: AlertTriangle, color: "text-destructive" },
+          ].map((stat) => (
+            <Card key={stat.label} className="hover:shadow-md transition-shadow">
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{stat.label}</span>
+                  <stat.icon className={`h-4 w-4 ${stat.color}`} />
+                </div>
+                <p className="text-2xl font-bold">{stat.value}</p>
+                <p className="text-xs text-muted-foreground mt-1">{stat.sub}</p>
+              </CardContent>
+            </Card>
+          ))}
         </div>
 
-        {/* Quick Actions + Top Opportunities */}
-        <div className="grid gap-6 lg:grid-cols-2">
-          {/* Quick Actions */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Quick Actions</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <Link to="/discover">
-                <Button variant="outline" className="w-full justify-between">
-                  <span className="flex items-center gap-2">
-                    <Search className="h-4 w-4" /> Browse New Opportunities
+        <div className="grid gap-6 lg:grid-cols-5">
+          {/* Quick Links */}
+          <div className="lg:col-span-2 space-y-2">
+            <h2 className="text-lg font-semibold mb-3">Quick Actions</h2>
+            {[
+              { to: "/discover", label: "Browse Opportunities", icon: Search },
+              { to: "/pipeline", label: "View Pipeline", icon: TrendingUp },
+              { to: "/funding", label: "Active Funding", icon: PoundSterling },
+            ].map((link) => (
+              <Link key={link.to} to={link.to}>
+                <div className="flex items-center justify-between rounded-xl border p-3.5 hover:bg-muted/50 transition-colors cursor-pointer group">
+                  <span className="flex items-center gap-2.5 text-sm font-medium">
+                    <link.icon className="h-4 w-4 text-muted-foreground" />
+                    {link.label}
                   </span>
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
+                  <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
+                </div>
               </Link>
-              <Link to="/pipeline">
-                <Button variant="outline" className="w-full justify-between">
-                  <span className="flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4" /> View Pipeline
-                  </span>
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
-              <Link to="/reports">
-                <Button variant="outline" className="w-full justify-between">
-                  <span className="flex items-center gap-2">
-                    <CalendarDays className="h-4 w-4" /> Generate Report
-                  </span>
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
-              <Link to="/relationships">
-                <Button variant="outline" className="w-full justify-between">
-                  <span className="flex items-center gap-2">
-                    <Star className="h-4 w-4" /> Funder Relationships
-                  </span>
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
+            ))}
+          </div>
 
           {/* Top Opportunities */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-lg">Top Opportunities</CardTitle>
+          <div className="lg:col-span-3">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-semibold">Top Opportunities</h2>
               <Link to="/discover">
-                <Button variant="ghost" size="sm">
+                <Button variant="ghost" size="sm" className="text-xs">
                   View all <ArrowRight className="ml-1 h-3 w-3" />
                 </Button>
               </Link>
-            </CardHeader>
-            <CardContent className="space-y-3">
+            </div>
+            <div className="space-y-2">
               {mockOpportunities
                 .filter((o) => o.status === "identified")
                 .sort((a, b) => b.score - a.score)
@@ -187,49 +126,38 @@ const Index = () => {
                 .map((opp) => (
                   <div
                     key={opp.id}
-                    className="flex items-center justify-between rounded-lg border p-3"
+                    className="flex items-center justify-between rounded-xl border p-3.5 hover:bg-muted/30 transition-colors"
                   >
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium truncate">{opp.funderName}</p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {opp.programName}
-                      </p>
-                      <div className="flex gap-1 mt-1">
-                        {opp.tags.slice(0, 2).map((tag) => (
-                          <Badge key={tag} variant="secondary" className="text-[10px] px-1.5 py-0">
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
+                      <p className="text-xs text-muted-foreground truncate">{opp.programName}</p>
                     </div>
-                    <div className="text-right ml-3 shrink-0">
+                    <div className="text-right ml-4 shrink-0">
                       <p className="text-sm font-semibold">{formatCurrency(opp.amount)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {daysUntil(opp.deadline)}d left
-                      </p>
+                      <p className="text-[11px] text-muted-foreground">{daysUntil(opp.deadline)}d left</p>
                     </div>
                   </div>
                 ))}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
 
-        {/* Active Funding Overview */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-lg">Active Funding</CardTitle>
+        {/* Active Funding Preview */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold">Active Funding</h2>
             <Link to="/funding">
-              <Button variant="ghost" size="sm">
+              <Button variant="ghost" size="sm" className="text-xs">
                 View all <ArrowRight className="ml-1 h-3 w-3" />
               </Button>
             </Link>
-          </CardHeader>
-          <CardContent className="space-y-4">
+          </div>
+          <div className="space-y-2">
             {mockActiveFunding.slice(0, 3).map((fund) => {
               const progress = getFundingProgress(fund.startDate, fund.endDate);
               const remaining = daysUntil(fund.endDate);
               return (
-                <div key={fund.id} className="space-y-2">
+                <div key={fund.id} className="rounded-xl border p-4 space-y-2.5">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium">{fund.funderName}</p>
@@ -237,18 +165,20 @@ const Index = () => {
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-semibold">{formatCurrency(fund.amount)}</p>
-                      <p className="text-xs text-muted-foreground">{remaining} days remaining</p>
+                      <p className={`text-xs ${remaining <= 90 ? "text-destructive font-medium" : "text-muted-foreground"}`}>
+                        {remaining}d remaining
+                      </p>
                     </div>
                   </div>
                   <Progress
                     value={progress}
-                    className={`h-2 ${remaining <= 90 ? "[&>div]:bg-destructive" : "[&>div]:bg-primary"}`}
+                    className={`h-1.5 ${remaining <= 90 ? "[&>div]:bg-destructive" : "[&>div]:bg-primary"}`}
                   />
                 </div>
               );
             })}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     </DashboardLayout>
   );

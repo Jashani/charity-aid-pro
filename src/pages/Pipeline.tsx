@@ -13,13 +13,13 @@ import {
   type OpportunityStatus,
 } from "@/lib/mock-data";
 
-const columns: { id: OpportunityStatus; label: string; emoji: string }[] = [
-  { id: "identified", label: "Identified", emoji: "🔍" },
-  { id: "researching", label: "Researching", emoji: "📖" },
-  { id: "applying", label: "Applying", emoji: "✏️" },
-  { id: "submitted", label: "Submitted", emoji: "📬" },
-  { id: "awarded", label: "Awarded", emoji: "🎉" },
-  { id: "rejected", label: "Rejected", emoji: "❌" },
+const columns: { id: OpportunityStatus; label: string; color: string }[] = [
+  { id: "identified", label: "Identified", color: "bg-muted-foreground" },
+  { id: "researching", label: "Researching", color: "bg-primary" },
+  { id: "applying", label: "Applying", color: "bg-warning" },
+  { id: "submitted", label: "Submitted", color: "bg-secondary" },
+  { id: "awarded", label: "Awarded", color: "bg-success" },
+  { id: "rejected", label: "Rejected", color: "bg-destructive" },
 ];
 
 const Pipeline = () => {
@@ -42,8 +42,7 @@ const Pipeline = () => {
   const toggleCollapse = (colId: string) => {
     setCollapsedCols((prev) => {
       const next = new Set(prev);
-      if (next.has(colId)) next.delete(colId);
-      else next.add(colId);
+      next.has(colId) ? next.delete(colId) : next.add(colId);
       return next;
     });
   };
@@ -57,11 +56,9 @@ const Pipeline = () => {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Pipeline</h1>
-            <p className="text-muted-foreground mt-1">
-              Drag opportunities between stages to track progress.
-            </p>
+            <p className="text-muted-foreground mt-1">Drag opportunities between stages.</p>
           </div>
-          <Button className="gap-2">
+          <Button className="gap-2 rounded-xl">
             <Plus className="h-4 w-4" /> Add Opportunity
           </Button>
         </div>
@@ -71,9 +68,11 @@ const Pipeline = () => {
           {columns.map((col) => {
             const count = opportunities.filter((o) => o.status === col.id).length;
             return (
-              <Badge key={col.id} variant="outline" className="text-sm py-1 px-3 gap-1.5">
-                {col.emoji} {col.label}: <span className="font-bold">{count}</span>
-              </Badge>
+              <div key={col.id} className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm">
+                <div className={`h-2 w-2 rounded-full ${col.color}`} />
+                <span className="text-muted-foreground">{col.label}</span>
+                <span className="font-semibold">{count}</span>
+              </div>
             );
           })}
         </div>
@@ -87,25 +86,22 @@ const Pipeline = () => {
             return (
               <div
                 key={col.id}
-                className="min-w-[280px] w-[280px] shrink-0 flex flex-col"
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDragOverCol(col.id);
-                }}
+                className="min-w-[260px] w-[260px] shrink-0 flex flex-col"
+                onDragOver={(e) => { e.preventDefault(); setDragOverCol(col.id); }}
                 onDragLeave={() => setDragOverCol(null)}
                 onDrop={() => handleDrop(col.id)}
               >
                 {/* Column header */}
                 <button
                   onClick={() => toggleCollapse(col.id)}
-                  className={`rounded-t-lg px-4 py-3 flex items-center justify-between w-full text-left border border-b-0 border-border bg-card hover:bg-muted/50 transition-colors`}
+                  className="rounded-t-xl px-4 py-3 flex items-center justify-between w-full text-left border border-b-0 bg-card hover:bg-muted/40 transition-colors"
                 >
                   <div className="flex items-center gap-2">
-                    <span className="text-lg">{col.emoji}</span>
-                    <h3 className="text-sm font-semibold">{col.label}</h3>
-                    <Badge variant="secondary" className="text-xs h-5 px-1.5 ml-1">
+                    <div className={`h-2.5 w-2.5 rounded-full ${col.color}`} />
+                    <span className="text-sm font-semibold">{col.label}</span>
+                    <span className="text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5">
                       {items.length}
-                    </Badge>
+                    </span>
                   </div>
                   <div className="flex items-center gap-2">
                     {items.length > 0 && (
@@ -114,9 +110,9 @@ const Pipeline = () => {
                       </span>
                     )}
                     {isCollapsed ? (
-                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                      <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
                     ) : (
-                      <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                      <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
                     )}
                   </div>
                 </button>
@@ -124,65 +120,55 @@ const Pipeline = () => {
                 {/* Column body */}
                 {!isCollapsed && (
                   <div
-                    className={`border border-t-0 border-border rounded-b-lg flex-1 transition-colors ${
+                    className={`border border-t-0 rounded-b-xl flex-1 transition-colors ${
                       isDragOver ? "bg-primary/5 ring-2 ring-primary/20" : "bg-muted/20"
                     }`}
                   >
-                    <ScrollArea className="h-[400px]">
+                    <ScrollArea className="h-[420px]">
                       <div className="p-2 space-y-2">
                         {items.map((opp) => (
-                          <Card
+                          <div
                             key={opp.id}
                             draggable
                             onDragStart={() => handleDragStart(opp.id)}
-                            className={`cursor-grab active:cursor-grabbing transition-all hover:shadow-md ${
+                            className={`rounded-xl border bg-card p-3 space-y-2 cursor-grab active:cursor-grabbing transition-all hover:shadow-md ${
                               draggedId === opp.id ? "opacity-40 scale-95" : ""
                             }`}
                           >
-                            <CardContent className="p-3 space-y-2">
-                              <div className="flex items-start gap-2">
-                                <GripVertical className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0 opacity-40" />
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-sm font-semibold leading-tight">{opp.funderName}</p>
-                                  <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                                    {opp.programName}
-                                  </p>
-                                </div>
+                            <div className="flex items-start gap-2">
+                              <GripVertical className="h-4 w-4 text-muted-foreground/30 mt-0.5 shrink-0" />
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium leading-tight">{opp.funderName}</p>
+                                <p className="text-xs text-muted-foreground mt-0.5 truncate">{opp.programName}</p>
                               </div>
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="font-bold text-foreground">
-                                  {formatCurrency(opp.amount)}
-                                </span>
-                                <span className="text-muted-foreground">
-                                  {daysUntil(opp.deadline)}d left
-                                </span>
-                              </div>
-                              <div className="flex flex-wrap gap-1">
+                            </div>
+                            <div className="flex items-center justify-between text-xs pl-6">
+                              <span className="font-semibold">{formatCurrency(opp.amount)}</span>
+                              <span className="text-muted-foreground">{daysUntil(opp.deadline)}d left</span>
+                            </div>
+                            {opp.tags.length > 0 && (
+                              <div className="flex flex-wrap gap-1 pl-6">
                                 {opp.tags.slice(0, 2).map((tag) => (
-                                  <Badge
-                                    key={tag}
-                                    variant="secondary"
-                                    className="text-[10px] px-1.5 py-0"
-                                  >
+                                  <span key={tag} className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
                                     {tag}
-                                  </Badge>
+                                  </span>
                                 ))}
                               </div>
-                              {opp.rejectionFeedback && col.id === "rejected" && (
-                                <div className="flex items-start gap-1.5 p-2 bg-destructive/5 rounded text-xs text-muted-foreground">
-                                  <MessageSquare className="h-3 w-3 mt-0.5 shrink-0" />
-                                  <span className="line-clamp-2">{opp.rejectionFeedback}</span>
-                                </div>
-                              )}
-                            </CardContent>
-                          </Card>
+                            )}
+                            {opp.rejectionFeedback && col.id === "rejected" && (
+                              <div className="flex items-start gap-1.5 p-2 bg-destructive/5 rounded-lg text-xs text-muted-foreground ml-6">
+                                <MessageSquare className="h-3 w-3 mt-0.5 shrink-0" />
+                                <span className="line-clamp-2">{opp.rejectionFeedback}</span>
+                              </div>
+                            )}
+                          </div>
                         ))}
                         {items.length === 0 && (
-                          <div className={`text-center py-12 rounded-lg border-2 border-dashed transition-colors ${
+                          <div className={`text-center py-12 rounded-xl border-2 border-dashed transition-colors ${
                             isDragOver ? "border-primary/40 bg-primary/5" : "border-muted"
                           }`}>
                             <p className="text-xs text-muted-foreground">
-                              {isDragOver ? "Drop here!" : "No items yet"}
+                              {isDragOver ? "Drop here" : "No items"}
                             </p>
                           </div>
                         )}
@@ -192,7 +178,7 @@ const Pipeline = () => {
                 )}
 
                 {isCollapsed && (
-                  <div className="border border-t-0 border-border rounded-b-lg bg-muted/10 px-4 py-2">
+                  <div className="border border-t-0 rounded-b-xl bg-muted/10 px-4 py-2">
                     <p className="text-xs text-muted-foreground">
                       {items.length} item{items.length !== 1 ? "s" : ""} · {formatCurrency(totalValue(items))}
                     </p>

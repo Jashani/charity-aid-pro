@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -10,7 +10,7 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart";
 import { BarChart, Bar, XAxis, YAxis, PieChart, Pie, Cell } from "recharts";
-import { Download, Printer, TrendingUp, TrendingDown, Target, CheckCircle } from "lucide-react";
+import { Download, Printer, TrendingUp, TrendingDown, CheckCircle } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import {
   mockOpportunities,
@@ -25,7 +25,6 @@ const quarters = [
   { value: "q3-2025", label: "Q3 2025 (Jul–Sep)" },
 ];
 
-/* ── Derived data ── */
 const totalActive = mockActiveFunding.reduce((s, f) => s + f.amount, 0);
 const expiringSoonValue = mockActiveFunding
   .filter((f) => daysUntil(f.endDate) <= 90 && daysUntil(f.endDate) > 0)
@@ -41,7 +40,6 @@ const successRate = (submitted + awarded + rejected) > 0
   ? Math.round((awarded / (submitted + awarded + rejected)) * 100)
   : 0;
 
-/* ── Chart data ── */
 const fundingBySource = [
   { source: "Trust", amount: 78500, fill: "hsl(var(--primary))" },
   { source: "Lottery", amount: 21800, fill: "hsl(var(--accent))" },
@@ -70,18 +68,16 @@ const Reports = () => {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6 max-w-6xl">
+      <div className="space-y-8 max-w-5xl">
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Reports & Insights</h1>
-            <p className="text-muted-foreground mt-1">
-              Key metrics for board presentations. Select a quarter to view.
-            </p>
+            <h1 className="text-3xl font-bold tracking-tight">Reports</h1>
+            <p className="text-muted-foreground mt-1">Key metrics for board presentations.</p>
           </div>
           <div className="flex gap-2">
             <Select value={selectedQuarter} onValueChange={setSelectedQuarter}>
-              <SelectTrigger className="w-52">
+              <SelectTrigger className="w-48 rounded-xl">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -90,129 +86,76 @@ const Reports = () => {
                 ))}
               </SelectContent>
             </Select>
-            <Button variant="outline" className="gap-2">
-              <Printer className="h-4 w-4" /> Print
+            <Button variant="outline" size="icon" className="rounded-xl">
+              <Printer className="h-4 w-4" />
             </Button>
-            <Button variant="outline" className="gap-2">
-              <Download className="h-4 w-4" /> Export
+            <Button variant="outline" size="icon" className="rounded-xl">
+              <Download className="h-4 w-4" />
             </Button>
           </div>
         </div>
 
-        {/* ── Section 1: Money In vs Money Ending ── */}
-        <div>
-          <h2 className="text-lg font-semibold mb-3">💰 Financial Health</h2>
-          <p className="text-sm text-muted-foreground mb-4">
-            How much funding you have now versus how much is ending soon.
-          </p>
-          <div className="grid gap-4 md:grid-cols-3">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Total Active Funding
-                </CardTitle>
-                <TrendingUp className="h-4 w-4 text-primary" />
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold">{formatCurrency(totalActive)}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Across {mockActiveFunding.length} grants
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Ending Within 3 Months
-                </CardTitle>
-                <TrendingDown className="h-4 w-4 text-destructive" />
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold text-destructive">{formatCurrency(expiringSoonValue)}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {mockActiveFunding.filter(f => daysUntil(f.endDate) <= 90 && daysUntil(f.endDate) > 0).length} grant(s) expiring
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Secured Funding
-                </CardTitle>
-                <CheckCircle className="h-4 w-4 text-primary" />
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold">{securedPercentage}%</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Of your funding has 3+ months remaining
-                </p>
-              </CardContent>
-            </Card>
+        {/* Financial Health */}
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold">Financial Health</h2>
+          <div className="grid gap-4 sm:grid-cols-3">
+            {[
+              { label: "Total Active", value: formatCurrency(totalActive), sub: `${mockActiveFunding.length} grants`, icon: TrendingUp, color: "text-primary" },
+              { label: "Ending Soon", value: formatCurrency(expiringSoonValue), sub: `${mockActiveFunding.filter(f => daysUntil(f.endDate) <= 90 && daysUntil(f.endDate) > 0).length} expiring`, icon: TrendingDown, color: "text-destructive" },
+              { label: "Secured", value: `${securedPercentage}%`, sub: "3+ months remaining", icon: CheckCircle, color: "text-secondary" },
+            ].map((s) => (
+              <Card key={s.label} className="hover:shadow-md transition-shadow">
+                <CardContent className="p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{s.label}</span>
+                    <s.icon className={`h-4 w-4 ${s.color}`} />
+                  </div>
+                  <p className={`text-2xl font-bold ${s.color === "text-destructive" ? "text-destructive" : ""}`}>{s.value}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{s.sub}</p>
+                </CardContent>
+              </Card>
+            ))}
           </div>
-        </div>
+        </section>
 
-        {/* ── Section 2: Application Progress ── */}
-        <div>
-          <h2 className="text-lg font-semibold mb-3">📊 Application Progress</h2>
-          <p className="text-sm text-muted-foreground mb-4">
-            How your applications are moving through the pipeline.
-          </p>
-          <div className="grid gap-4 md:grid-cols-4 mb-4">
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Total Applications</p>
-                <p className="text-2xl font-bold mt-1">{totalApps}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">In Progress</p>
-                <p className="text-2xl font-bold mt-1">{inProgress}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Awaiting Decision</p>
-                <p className="text-2xl font-bold mt-1">{submitted}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Success Rate</p>
-                <p className="text-2xl font-bold mt-1">
-                  {successRate}%
-                  {successRate > 0 && <span className="text-sm font-normal text-muted-foreground ml-1">({awarded} won)</span>}
-                </p>
-              </CardContent>
-            </Card>
+        {/* Application Progress */}
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold">Application Progress</h2>
+          <div className="grid gap-4 sm:grid-cols-4">
+            {[
+              { label: "Total", value: totalApps },
+              { label: "In Progress", value: inProgress },
+              { label: "Awaiting Decision", value: submitted },
+              { label: "Success Rate", value: `${successRate}%` },
+            ].map((s) => (
+              <div key={s.label} className="rounded-xl border p-4">
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">{s.label}</p>
+                <p className="text-2xl font-bold mt-1">{s.value}</p>
+              </div>
+            ))}
           </div>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Applications by Stage</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ChartContainer config={progressChartConfig} className="h-[220px]">
+          <Card className="rounded-xl overflow-hidden">
+            <CardContent className="p-5">
+              <p className="text-sm font-medium mb-4">Applications by Stage</p>
+              <ChartContainer config={progressChartConfig} className="h-[200px]">
                 <BarChart data={applicationProgress}>
-                  <XAxis dataKey="stage" tick={{ fontSize: 12 }} />
+                  <XAxis dataKey="stage" tick={{ fontSize: 11 }} />
                   <YAxis allowDecimals={false} />
                   <ChartTooltip content={<ChartTooltipContent />} />
-                  <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="count" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ChartContainer>
             </CardContent>
           </Card>
-        </div>
+        </section>
 
-        {/* ── Section 3: Funding by Source ── */}
-        <div>
-          <h2 className="text-lg font-semibold mb-3">🏛️ Funding Breakdown by Source</h2>
-          <p className="text-sm text-muted-foreground mb-4">
-            Where your money comes from — useful for diversification planning.
-          </p>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex flex-col md:flex-row items-center gap-6">
-                <ChartContainer config={sourceChartConfig} className="h-[220px] w-[280px]">
+        {/* Funding by Source */}
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold">Funding by Source</h2>
+          <Card className="rounded-xl overflow-hidden">
+            <CardContent className="p-5">
+              <div className="flex flex-col md:flex-row items-center gap-8">
+                <ChartContainer config={sourceChartConfig} className="h-[200px] w-[240px]">
                   <PieChart>
                     <ChartTooltip content={<ChartTooltipContent />} />
                     <Pie
@@ -221,8 +164,9 @@ const Reports = () => {
                       nameKey="source"
                       cx="50%"
                       cy="50%"
-                      innerRadius={55}
-                      outerRadius={85}
+                      innerRadius={50}
+                      outerRadius={80}
+                      strokeWidth={2}
                     >
                       {fundingBySource.map((entry, i) => (
                         <Cell key={i} fill={entry.fill} />
@@ -230,20 +174,17 @@ const Reports = () => {
                     </Pie>
                   </PieChart>
                 </ChartContainer>
-                <div className="flex-1 space-y-3">
+                <div className="flex-1 space-y-3 w-full">
                   {fundingBySource.map((entry) => (
-                    <div key={entry.source} className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="h-3 w-3 rounded-full"
-                          style={{ backgroundColor: entry.fill }}
-                        />
+                    <div key={entry.source} className="flex items-center justify-between rounded-xl border p-3.5">
+                      <div className="flex items-center gap-2.5">
+                        <div className="h-3 w-3 rounded-full" style={{ backgroundColor: entry.fill }} />
                         <span className="text-sm font-medium">{entry.source}</span>
                       </div>
                       <div className="text-right">
                         <p className="text-sm font-bold">{formatCurrency(entry.amount)}</p>
                         <p className="text-xs text-muted-foreground">
-                          {Math.round((entry.amount / totalActive) * 100)}% of total
+                          {Math.round((entry.amount / totalActive) * 100)}%
                         </p>
                       </div>
                     </div>
@@ -252,7 +193,7 @@ const Reports = () => {
               </div>
             </CardContent>
           </Card>
-        </div>
+        </section>
       </div>
     </DashboardLayout>
   );

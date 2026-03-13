@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -84,46 +84,44 @@ const Discover = () => {
 
   const getScoreColor = (score: number) => {
     if (score >= 85) return "text-success";
-    if (score >= 70) return "text-accent-foreground";
+    if (score >= 70) return "text-primary";
     return "text-muted-foreground";
   };
 
   return (
     <DashboardLayout>
-      <div className="space-y-6 max-w-6xl">
+      <div className="space-y-6 max-w-5xl">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Discover Opportunities</h1>
-            <p className="text-muted-foreground mt-1">
-              Automatically discovered funding opportunities, ranked for you.
-            </p>
+            <h1 className="text-3xl font-bold tracking-tight">Discover</h1>
+            <p className="text-muted-foreground mt-1">Funding opportunities ranked for you.</p>
           </div>
-          <Button variant="outline" className="gap-2">
+          <Button variant="outline" className="gap-2 rounded-xl">
             <RefreshCw className="h-4 w-4" /> Scan Now
           </Button>
         </div>
 
-        {/* Search and Filter Bar */}
-        <div className="space-y-4">
+        {/* Search */}
+        <div className="space-y-3">
           <div className="flex gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search funders, programmes, keywords..."
+                placeholder="Search funders, programmes..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9"
+                className="pl-9 rounded-xl"
               />
             </div>
             <Button
               variant={showFilters ? "default" : "outline"}
               onClick={() => setShowFilters(!showFilters)}
-              className="gap-2"
+              className="gap-2 rounded-xl"
             >
               <SlidersHorizontal className="h-4 w-4" /> Filters
             </Button>
             <Select value={sortBy} onValueChange={setSortBy}>
-              <SelectTrigger className="w-44">
+              <SelectTrigger className="w-44 rounded-xl">
                 <ArrowUpDown className="h-4 w-4 mr-2" />
                 <SelectValue />
               </SelectTrigger>
@@ -136,15 +134,13 @@ const Discover = () => {
           </div>
 
           {showFilters && (
-            <Card>
-              <CardContent className="pt-4 pb-4">
+            <Card className="rounded-xl">
+              <CardContent className="p-4">
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                      Funding Type
-                    </label>
+                    <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Type</label>
                     <Select value={typeFilter} onValueChange={setTypeFilter}>
-                      <SelectTrigger><SelectValue placeholder="All types" /></SelectTrigger>
+                      <SelectTrigger className="rounded-xl"><SelectValue placeholder="All types" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All Types</SelectItem>
                         <SelectItem value="grant">Grant</SelectItem>
@@ -156,11 +152,9 @@ const Discover = () => {
                     </Select>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                      Duration
-                    </label>
+                    <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Duration</label>
                     <Select value={durationFilter} onValueChange={setDurationFilter}>
-                      <SelectTrigger><SelectValue placeholder="Any duration" /></SelectTrigger>
+                      <SelectTrigger className="rounded-xl"><SelectValue placeholder="Any duration" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">Any Duration</SelectItem>
                         <SelectItem value="single-year">Single Year</SelectItem>
@@ -169,11 +163,9 @@ const Discover = () => {
                     </Select>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                      Relationship
-                    </label>
+                    <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Relationship</label>
                     <Select value={relationshipFilter} onValueChange={setRelationshipFilter}>
-                      <SelectTrigger><SelectValue placeholder="Any relationship" /></SelectTrigger>
+                      <SelectTrigger className="rounded-xl"><SelectValue placeholder="Any" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">Any Relationship</SelectItem>
                         <SelectItem value="existing-funder">Existing Funder</SelectItem>
@@ -184,11 +176,9 @@ const Discover = () => {
                     </Select>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                      Location
-                    </label>
+                    <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Location</label>
                     <Select value={locationFilter} onValueChange={setLocationFilter}>
-                      <SelectTrigger><SelectValue placeholder="Any location" /></SelectTrigger>
+                      <SelectTrigger className="rounded-xl"><SelectValue placeholder="Any location" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">Any Location</SelectItem>
                         {locations.map((loc) => (
@@ -200,46 +190,30 @@ const Discover = () => {
                 </div>
                 <div className="mt-4">
                   <label className="text-xs font-medium text-muted-foreground mb-2 block">
-                    Amount Range: {formatCurrency(amountRange[0])} – {formatCurrency(amountRange[1])}
+                    Amount: {formatCurrency(amountRange[0])} – {formatCurrency(amountRange[1])}
                   </label>
-                  <Slider
-                    min={0}
-                    max={300000}
-                    step={1000}
-                    value={amountRange}
-                    onValueChange={setAmountRange}
-                    className="mt-2"
-                  />
+                  <Slider min={0} max={300000} step={1000} value={amountRange} onValueChange={setAmountRange} className="mt-2" />
                 </div>
               </CardContent>
             </Card>
           )}
         </div>
 
-        {/* Results */}
-        <div className="space-y-1">
-          <p className="text-sm text-muted-foreground">{filtered.length} opportunities found</p>
-        </div>
+        <p className="text-sm text-muted-foreground">{filtered.length} opportunities</p>
 
         <div className="space-y-3">
           {filtered.map((opp) => (
             <OpportunityCard key={opp.id} opportunity={opp} getTagStyle={getTagStyle} getScoreColor={getScoreColor} />
           ))}
           {filtered.length === 0 && (
-            <Card>
+            <Card className="rounded-xl">
               <CardContent className="py-12 text-center">
                 <Search className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
                 <p className="text-muted-foreground">No opportunities match your filters.</p>
                 <Button variant="ghost" className="mt-2" onClick={() => {
-                  setSearchTerm("");
-                  setTypeFilter("all");
-                  setDurationFilter("all");
-                  setRelationshipFilter("all");
-                  setLocationFilter("all");
-                  setAmountRange([0, 300000]);
-                }}>
-                  Clear all filters
-                </Button>
+                  setSearchTerm(""); setTypeFilter("all"); setDurationFilter("all");
+                  setRelationshipFilter("all"); setLocationFilter("all"); setAmountRange([0, 300000]);
+                }}>Clear all filters</Button>
               </CardContent>
             </Card>
           )}
@@ -259,60 +233,48 @@ function OpportunityCard({
   getScoreColor: (score: number) => string;
 }) {
   return (
-    <Card className="hover:shadow-md transition-shadow">
+    <Card className="hover:shadow-md transition-shadow rounded-xl">
       <CardContent className="p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0 space-y-2">
-            <div className="flex items-start gap-3">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="font-semibold text-base">{opp.funderName}</h3>
-                  {opp.relationship === "existing-funder" && (
-                    <Star className="h-4 w-4 text-accent fill-accent" />
-                  )}
-                </div>
-                <p className="text-sm text-muted-foreground">{opp.programName}</p>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-semibold text-base">{opp.funderName}</h3>
+                {opp.relationship === "existing-funder" && (
+                  <Star className="h-4 w-4 text-accent fill-accent" />
+                )}
               </div>
+              <p className="text-sm text-muted-foreground">{opp.programName}</p>
             </div>
-
             <p className="text-sm text-muted-foreground line-clamp-2">{opp.description}</p>
-
             <div className="flex flex-wrap gap-1.5">
               {opp.tags.map((tag) => (
-                <Badge key={tag} variant="outline" className={`text-xs ${getTagStyle(tag)}`}>
+                <Badge key={tag} variant="outline" className={`text-xs rounded-full ${getTagStyle(tag)}`}>
                   {tag === "Quick Win" && <Zap className="h-3 w-3 mr-0.5" />}
                   {tag}
                 </Badge>
               ))}
-              <Badge variant="outline" className="text-xs">
+              <Badge variant="outline" className="text-xs rounded-full">
                 {opp.type.charAt(0).toUpperCase() + opp.type.slice(1)}
               </Badge>
-              <Badge variant="outline" className="text-xs">
+              <Badge variant="outline" className="text-xs rounded-full">
                 {getRelationshipLabel(opp.relationship)}
-              </Badge>
-              <Badge variant="outline" className="text-xs">
-                {opp.location}
               </Badge>
             </div>
           </div>
 
           <div className="text-right shrink-0 space-y-1.5">
-            <div className={`text-2xl font-bold ${getScoreColor(opp.score)}`}>
-              {opp.score}
-            </div>
+            <div className={`text-2xl font-bold ${getScoreColor(opp.score)}`}>{opp.score}</div>
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Match</p>
-            <div className="space-y-0.5">
-              <p className="text-sm font-semibold">
-                {formatCurrency(opp.amount)}
-                {opp.amountMax && opp.amountMax !== opp.amount && (
-                  <span className="text-muted-foreground font-normal"> – {formatCurrency(opp.amountMax)}</span>
-                )}
-              </p>
-              <div className="flex items-center gap-1 text-xs text-muted-foreground justify-end">
-                <Clock className="h-3 w-3" />
-                {daysUntil(opp.deadline)} days left
-              </div>
-              <p className="text-xs text-muted-foreground">{opp.durationMonths} months</p>
+            <p className="text-sm font-semibold">
+              {formatCurrency(opp.amount)}
+              {opp.amountMax && opp.amountMax !== opp.amount && (
+                <span className="text-muted-foreground font-normal"> – {formatCurrency(opp.amountMax)}</span>
+              )}
+            </p>
+            <div className="flex items-center gap-1 text-xs text-muted-foreground justify-end">
+              <Clock className="h-3 w-3" />
+              {daysUntil(opp.deadline)}d left
             </div>
             <Button variant="ghost" size="sm" className="mt-1 h-7 text-xs gap-1">
               <ExternalLink className="h-3 w-3" /> Details
