@@ -51,11 +51,11 @@ export function AppSidebar() {
           <NavLink
             to={item.url}
             end={item.url === "/"}
-            className="hover:bg-sidebar-accent/50"
+            className="hover:bg-sidebar-accent/40 rounded-lg transition-colors"
             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground font-medium"
           >
-            <item.icon className="h-5 w-5" />
-            {!collapsed && <span>{item.title}</span>}
+            <item.icon className="h-4 w-4" />
+            {!collapsed && <span className="text-sm">{item.title}</span>}
           </NavLink>
         </SidebarMenuButton>
       </SidebarMenuItem>
@@ -63,39 +63,42 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="p-4">
-        <div className="flex items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sidebar-accent">
-            <Music className="h-5 w-5 text-sidebar-accent-foreground" />
+      <SidebarHeader className="p-4 pb-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sidebar-primary/20">
+            <Music className="h-4 w-4 text-sidebar-primary" />
           </div>
           {!collapsed && (
-            <div className="flex flex-col">
-              <span className="text-sm font-semibold text-sidebar-foreground">Music for</span>
-              <span className="text-xs text-sidebar-foreground/70">Wellbeing</span>
-            </div>
+            <span className="text-sm font-semibold text-sidebar-foreground tracking-tight">
+              Music for Wellbeing
+            </span>
           )}
         </div>
       </SidebarHeader>
 
-      <SidebarContent>
+      <SidebarContent className="px-2">
         <SidebarGroup>
-          <SidebarGroupLabel>Overview</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-[11px] uppercase tracking-widest text-sidebar-foreground/40 mb-1">
+            Overview
+          </SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>{renderItems(mainItems)}</SidebarMenu>
+            <SidebarMenu className="space-y-0.5">{renderItems(mainItems)}</SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarGroup>
-          <SidebarGroupLabel>Manage</SidebarGroupLabel>
+        <SidebarGroup className="mt-4">
+          <SidebarGroupLabel className="text-[11px] uppercase tracking-widest text-sidebar-foreground/40 mb-1">
+            Manage
+          </SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>{renderItems(manageItems)}</SidebarMenu>
+            <SidebarMenu className="space-y-0.5">{renderItems(manageItems)}</SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
 
       <SidebarFooter className="p-4">
         {!collapsed && (
-          <p className="text-xs text-sidebar-foreground/50">Funding Dashboard v1.0</p>
+          <p className="text-[10px] text-sidebar-foreground/30 tracking-wide">v1.0</p>
         )}
       </SidebarFooter>
     </Sidebar>
