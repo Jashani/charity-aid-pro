@@ -3,8 +3,20 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { GripVertical, Plus, MessageSquare, ChevronDown, ChevronUp } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { toast } from "sonner";
 import {
   mockOpportunities,
   formatCurrency,
@@ -27,6 +39,14 @@ const Pipeline = () => {
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
   const [collapsedCols, setCollapsedCols] = useState<Set<string>>(new Set());
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [newOpp, setNewOpp] = useState({
+    funderName: "",
+    programName: "",
+    amount: "",
+    deadline: "",
+    type: "trust" as FundingOpportunity["type"],
+  });
 
   const handleDragStart = (id: string) => setDraggedId(id);
 
@@ -50,6 +70,37 @@ const Pipeline = () => {
   const totalValue = (items: FundingOpportunity[]) =>
     items.reduce((s, o) => s + o.amount, 0);
 
+  const handleAddOpportunity = () => {
+    if (!newOpp.funderName || !newOpp.programName || !newOpp.amount || !newOpp.deadline) {
+      toast.error("Please fill in all fields");
+      return;
+    }
+    const opp: FundingOpportunity = {
+      id: `custom-${Date.now()}`,
+      funderName: newOpp.funderName,
+      programName: newOpp.programName,
+      amount: parseInt(newOpp.amount),
+      type: newOpp.type,
+      deadline: newOpp.deadline,
+      location: "UK-wide",
+      duration: "single-year",
+      durationMonths: 12,
+      relationship: "new",
+      status: "identified",
+      score: 50,
+      tags: [],
+      description: "",
+      eligibility: "",
+      notes: "",
+      website: "",
+      source: "Manual Entry",
+    };
+    setOpportunities((prev) => [...prev, opp]);
+    setShowAddDialog(false);
+    setNewOpp({ funderName: "", programName: "", amount: "", deadline: "", type: "trust" });
+    toast.success(`"${opp.funderName}" added to pipeline`);
+  };
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -58,7 +109,7 @@ const Pipeline = () => {
             <h1 className="text-3xl font-bold tracking-tight">Pipeline</h1>
             <p className="text-muted-foreground mt-1">Drag opportunities between stages.</p>
           </div>
-          <Button className="gap-2 rounded-xl">
+          <Button className="gap-2 rounded-xl" onClick={() => setShowAddDialog(true)}>
             <Plus className="h-4 w-4" /> Add Opportunity
           </Button>
         </div>
@@ -91,7 +142,6 @@ const Pipeline = () => {
                 onDragLeave={() => setDragOverCol(null)}
                 onDrop={() => handleDrop(col.id)}
               >
-                {/* Column header */}
                 <button
                   onClick={() => toggleCollapse(col.id)}
                   className="rounded-t-xl px-4 py-3 flex items-center justify-between w-full text-left border border-b-0 bg-card hover:bg-muted/40 transition-colors"
@@ -117,7 +167,6 @@ const Pipeline = () => {
                   </div>
                 </button>
 
-                {/* Column body */}
                 {!isCollapsed && (
                   <div
                     className={`border border-t-0 rounded-b-xl flex-1 transition-colors ${
@@ -189,6 +238,74 @@ const Pipeline = () => {
           })}
         </div>
       </div>
+
+      {/* Add Opportunity Dialog */}
+      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+        <DialogContent className="rounded-xl">
+          <DialogHeader>
+            <DialogTitle>Add Opportunity</DialogTitle>
+            <DialogDescription>Add a new funding opportunity to your pipeline.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Funder Name</Label>
+              <Input
+                placeholder="e.g. Arts Council England"
+                value={newOpp.funderName}
+                onChange={(e) => setNewOpp((p) => ({ ...p, funderName: e.target.value }))}
+                className="rounded-xl"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Programme Name</Label>
+              <Input
+                placeholder="e.g. Project Grants"
+                value={newOpp.programName}
+                onChange={(e) => setNewOpp((p) => ({ ...p, programName: e.target.value }))}
+                className="rounded-xl"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Amount (£)</Label>
+                <Input
+                  type="number"
+                  placeholder="10000"
+                  value={newOpp.amount}
+                  onChange={(e) => setNewOpp((p) => ({ ...p, amount: e.target.value }))}
+                  className="rounded-xl"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Deadline</Label>
+                <Input
+                  type="date"
+                  value={newOpp.deadline}
+                  onChange={(e) => setNewOpp((p) => ({ ...p, deadline: e.target.value }))}
+                  className="rounded-xl"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Type</Label>
+              <Select value={newOpp.type} onValueChange={(v) => setNewOpp((p) => ({ ...p, type: v as any }))}>
+                <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="trust">Trust</SelectItem>
+                  <SelectItem value="lottery">Lottery</SelectItem>
+                  <SelectItem value="government">Government</SelectItem>
+                  <SelectItem value="corporate">Corporate</SelectItem>
+                  <SelectItem value="grant">Grant</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddDialog(false)} className="rounded-xl">Cancel</Button>
+            <Button onClick={handleAddOpportunity} className="rounded-xl">Add to Pipeline</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 };

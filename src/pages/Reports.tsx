@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -12,6 +11,7 @@ import {
 import { BarChart, Bar, XAxis, YAxis, PieChart, Pie, Cell } from "recharts";
 import { Download, Printer, TrendingUp, TrendingDown, CheckCircle } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { toast } from "sonner";
 import {
   mockOpportunities,
   mockActiveFunding,
@@ -66,6 +66,46 @@ const progressChartConfig: ChartConfig = {
 const Reports = () => {
   const [selectedQuarter, setSelectedQuarter] = useState("q1-2026");
 
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleDownload = () => {
+    const rows = [
+      ["Metric", "Value"],
+      ["Total Active Funding", formatCurrency(totalActive)],
+      ["Number of Grants", String(mockActiveFunding.length)],
+      ["Ending Soon (value)", formatCurrency(expiringSoonValue)],
+      ["Secured %", `${securedPercentage}%`],
+      [""],
+      ["Total Applications", String(totalApps)],
+      ["In Progress", String(inProgress)],
+      ["Submitted", String(submitted)],
+      ["Awarded", String(awarded)],
+      ["Rejected", String(rejected)],
+      ["Success Rate", `${successRate}%`],
+      [""],
+      ["Funding Source", "Amount"],
+      ...fundingBySource.map((s) => [s.source, formatCurrency(s.amount)]),
+      [""],
+      ["Active Grants"],
+      ["Funder", "Programme", "Amount", "Start", "End", "Renewable"],
+      ...mockActiveFunding.map((f) => [
+        f.funderName, f.programName, formatCurrency(f.amount),
+        f.startDate, f.endDate, f.renewalEligible ? "Yes" : "No",
+      ]),
+    ];
+    const csv = rows.map((r) => r.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `funding-report-${selectedQuarter}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Report downloaded");
+  };
+
   return (
     <DashboardLayout>
       <div className="space-y-8 max-w-5xl">
@@ -86,10 +126,10 @@ const Reports = () => {
                 ))}
               </SelectContent>
             </Select>
-            <Button variant="outline" size="icon" className="rounded-xl">
+            <Button variant="outline" size="icon" className="rounded-xl" onClick={handlePrint} title="Print report">
               <Printer className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="icon" className="rounded-xl">
+            <Button variant="outline" size="icon" className="rounded-xl" onClick={handleDownload} title="Download CSV">
               <Download className="h-4 w-4" />
             </Button>
           </div>

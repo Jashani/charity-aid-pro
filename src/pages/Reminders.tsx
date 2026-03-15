@@ -3,8 +3,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { Bell, Mail, Clock, RefreshCw, CalendarCheck, Newspaper, Eye } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Bell, Mail, Clock, RefreshCw, CalendarCheck, Newspaper, Eye, X } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { toast } from "sonner";
 import { mockReminderRules, type ReminderRule } from "@/lib/mock-data";
 
 const typeIcons: Record<string, React.ReactNode> = {
@@ -14,14 +25,44 @@ const typeIcons: Record<string, React.ReactNode> = {
   digest: <Newspaper className="h-5 w-5 text-muted-foreground" />,
 };
 
+interface Recipient {
+  email: string;
+  label: string;
+  type: string;
+}
+
 const Reminders = () => {
   const [rules, setRules] = useState<ReminderRule[]>(mockReminderRules);
   const [showPreview, setShowPreview] = useState(false);
+  const [showAddRecipient, setShowAddRecipient] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [newLabel, setNewLabel] = useState("");
+  const [recipients, setRecipients] = useState<Recipient[]>([
+    { email: "team@musicforwellbeing.org", label: "Primary", type: "Active" },
+    { email: "director@musicforwellbeing.org", label: "Board updates", type: "Digest" },
+  ]);
 
   const toggleRule = (id: string) => {
     setRules((prev) =>
       prev.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r))
     );
+  };
+
+  const handleAddRecipient = () => {
+    if (!newEmail || !newEmail.includes("@")) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
+    setRecipients((prev) => [...prev, { email: newEmail, label: newLabel || "General", type: "Active" }]);
+    setShowAddRecipient(false);
+    setNewEmail("");
+    setNewLabel("");
+    toast.success(`${newEmail} added as recipient`);
+  };
+
+  const removeRecipient = (email: string) => {
+    setRecipients((prev) => prev.filter((r) => r.email !== email));
+    toast.success("Recipient removed");
   };
 
   return (
@@ -71,21 +112,21 @@ const Reminders = () => {
             <CardDescription>Where notifications are sent.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            <div className="flex items-center justify-between rounded-xl border p-3">
-              <div>
-                <p className="text-sm font-medium">team@musicforwellbeing.org</p>
-                <p className="text-xs text-muted-foreground">Primary</p>
+            {recipients.map((r) => (
+              <div key={r.email} className="flex items-center justify-between rounded-xl border p-3">
+                <div>
+                  <p className="text-sm font-medium">{r.email}</p>
+                  <p className="text-xs text-muted-foreground">{r.label}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant={r.type === "Active" ? "default" : "secondary"} className="rounded-full">{r.type}</Badge>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeRecipient(r.email)}>
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
               </div>
-              <Badge className="rounded-full">Active</Badge>
-            </div>
-            <div className="flex items-center justify-between rounded-xl border p-3">
-              <div>
-                <p className="text-sm font-medium">director@musicforwellbeing.org</p>
-                <p className="text-xs text-muted-foreground">Board updates</p>
-              </div>
-              <Badge variant="secondary" className="rounded-full">Digest</Badge>
-            </div>
-            <Button variant="outline" size="sm" className="mt-2 rounded-xl">+ Add recipient</Button>
+            ))}
+            <Button variant="outline" size="sm" className="mt-2 rounded-xl" onClick={() => setShowAddRecipient(true)}>+ Add recipient</Button>
           </CardContent>
         </Card>
 
@@ -120,6 +161,41 @@ const Reminders = () => {
           </Card>
         )}
       </div>
+
+      {/* Add Recipient Dialog */}
+      <Dialog open={showAddRecipient} onOpenChange={setShowAddRecipient}>
+        <DialogContent className="rounded-xl">
+          <DialogHeader>
+            <DialogTitle>Add Recipient</DialogTitle>
+            <DialogDescription>Add a new email address to receive notifications.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Email Address</Label>
+              <Input
+                type="email"
+                placeholder="colleague@organisation.org"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                className="rounded-xl"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Label (optional)</Label>
+              <Input
+                placeholder="e.g. Finance team"
+                value={newLabel}
+                onChange={(e) => setNewLabel(e.target.value)}
+                className="rounded-xl"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddRecipient(false)} className="rounded-xl">Cancel</Button>
+            <Button onClick={handleAddRecipient} className="rounded-xl">Add Recipient</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 };

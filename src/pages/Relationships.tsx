@@ -1,9 +1,14 @@
 import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Search,
   Star,
@@ -12,12 +17,54 @@ import {
   ExternalLink,
   Users,
   TrendingUp,
+  Calendar,
+  CheckCircle,
+  XCircle,
+  Clock,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { mockFunderContacts, formatCurrency } from "@/lib/mock-data";
+import { mockFunderContacts, formatCurrency, type FunderContact } from "@/lib/mock-data";
+
+// Mock interaction history per contact
+const mockHistory: Record<string, { date: string; type: string; note: string }[]> = {
+  fc1: [
+    { date: "2026-01-15", type: "Meeting", note: "Discussed new project proposal for community workshops" },
+    { date: "2025-09-20", type: "Email", note: "Submitted final grant report — positive feedback received" },
+    { date: "2025-04-01", type: "Award", note: "£12,000 grant awarded for National Lottery Project" },
+    { date: "2025-03-01", type: "Application", note: "Application submitted for Project Grants 2025" },
+  ],
+  fc2: [
+    { date: "2024-12-01", type: "Email", note: "Received rejection feedback — encouraged to reapply with stronger evidence" },
+    { date: "2024-09-15", type: "Application", note: "Application submitted for Reaching Communities" },
+  ],
+  fc3: [
+    { date: "2026-02-10", type: "Event", note: "Attended Youth Music networking event — introduced to new contacts" },
+    { date: "2025-06-01", type: "Award", note: "£8,500 Incubator Fund grant awarded" },
+    { date: "2025-01-10", type: "Application", note: "Application submitted for Incubator Fund" },
+  ],
+  fc4: [
+    { date: "2026-02-20", type: "Application", note: "New application submitted — awaiting decision" },
+    { date: "2025-01-01", type: "Award", note: "£25,000 Main Grants Programme awarded (2-year)" },
+  ],
+  fc5: [
+    { date: "2025-11-20", type: "Call", note: "Progress check-in call — project on track, positive feedback" },
+    { date: "2024-04-01", type: "Award", note: "£45,000 Main Grants awarded (3-year programme)" },
+  ],
+};
+
+const typeIcons: Record<string, React.ReactNode> = {
+  Meeting: <Users className="h-3.5 w-3.5 text-primary" />,
+  Email: <Mail className="h-3.5 w-3.5 text-muted-foreground" />,
+  Award: <CheckCircle className="h-3.5 w-3.5 text-success" />,
+  Application: <Clock className="h-3.5 w-3.5 text-warning" />,
+  Event: <Calendar className="h-3.5 w-3.5 text-secondary" />,
+  Call: <Phone className="h-3.5 w-3.5 text-primary" />,
+  Rejection: <XCircle className="h-3.5 w-3.5 text-destructive" />,
+};
 
 const Relationships = () => {
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedContact, setSelectedContact] = useState<FunderContact | null>(null);
 
   const filtered = searchTerm
     ? mockFunderContacts.filter(
@@ -120,7 +167,7 @@ const Relationships = () => {
                       day: "numeric", month: "short", year: "numeric",
                     })}
                   </span>
-                  <Button variant="ghost" size="sm" className="h-7 text-xs gap-1">
+                  <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={() => setSelectedContact(contact)}>
                     <ExternalLink className="h-3 w-3" /> History
                   </Button>
                 </div>
@@ -129,6 +176,42 @@ const Relationships = () => {
           ))}
         </div>
       </div>
+
+      {/* History Dialog */}
+      <Dialog open={!!selectedContact} onOpenChange={() => setSelectedContact(null)}>
+        <DialogContent className="rounded-xl max-w-md">
+          {selectedContact && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{selectedContact.name}</DialogTitle>
+                <p className="text-sm text-muted-foreground">{selectedContact.role} · {selectedContact.organisation}</p>
+              </DialogHeader>
+              <div className="space-y-1 py-2">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Interaction History</p>
+                <div className="space-y-3">
+                  {(mockHistory[selectedContact.id] || []).map((entry, i) => (
+                    <div key={i} className="flex gap-3 items-start">
+                      <div className="mt-0.5 shrink-0">{typeIcons[entry.type] || <Clock className="h-3.5 w-3.5 text-muted-foreground" />}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold">{entry.type}</span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {new Date(entry.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">{entry.note}</p>
+                      </div>
+                    </div>
+                  ))}
+                  {!(mockHistory[selectedContact.id]?.length) && (
+                    <p className="text-xs text-muted-foreground text-center py-4">No history recorded yet.</p>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 };
