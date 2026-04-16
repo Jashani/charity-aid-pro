@@ -1,0 +1,7 @@
+azure-functions>=1.21.0
+azure-identity>=1.19.0
+azure-cosmos>=4.9.0
+openai>=1.60.0
+pydantic>=2.10.0
+httpx>=0.28.0
+markitdown[html]>=0.1.0

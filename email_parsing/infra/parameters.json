@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "projectName": { "value": "charity-email-parser" },
+    "location": { "value": "uksouth" },
+    "openAiModelPrimary": { "value": "gpt-4o-mini" },
+    "openAiModelPrimaryVersion": { "value": "2024-07-18" },
+    "openAiModelFallback": { "value": "gpt-4o" },
+    "openAiModelFallbackVersion": { "value": "2024-11-20" }
+  }
+}
