@@ -7,13 +7,13 @@ from scoring.algorithmic import get_geography_modifier, score_funding_value, sco
 from scoring.gating import (
     check_eligibility,
     check_extraction_confidence,
-    check_geography,
     check_reapplication,
 )
-from scoring.llm import score_opportunity_with_llm
+from scoring.llm import check_geography_with_llm, score_opportunity_with_llm
 from scoring.models import (
     FundingValueScore,
     GatingResult,
+    GeographyGate,
     OpportunityInput,
     ReasonedScore,
     ScoredOpportunity,
@@ -26,14 +26,24 @@ from scoring.models import (
 async def score_opportunity(opp: OpportunityInput) -> ScoredOpportunity:
     """Run the full scoring pipeline on a single opportunity."""
 
-    # ── Stage 1a: Algorithmic gates (cheap, run before LLM) ─────────────
+    # ── Stage 1a: Algorithmic gates ──────────────────────────────────────
     extraction = check_extraction_confidence(opp.extractionConfidence)
-    geography = check_geography(opp.location)
     reapplication = check_reapplication(opp.relationship.value)
 
-    # Geography hard fail → skip LLM call entirely
-    geography_hard_fail = not geography.pass_ and geography.specificity is None
-    if geography_hard_fail:
+    # ── Stage 1b: LLM geography check (falls back to keyword if LLM fails) ─
+    try:
+        geo_data = await check_geography_with_llm(opp.location)
+        geography = GeographyGate(
+            **{"pass": geo_data["pass"]},
+            location=opp.location,
+            specificity=geo_data.get("specificity"),
+        )
+    except Exception:
+        from scoring.gating import check_geography as _keyword_geography
+        geography = _keyword_geography(opp.location)
+
+    # Geography hard fail → explicit out-of-area, skip further LLM calls
+    if not geography.pass_:
         eligibility = check_eligibility(
             {"pass": False, "confidence": 0.0, "reasoning": "Not assessed — geography hard fail"}
         )
@@ -50,7 +60,6 @@ async def score_opportunity(opp: OpportunityInput) -> ScoredOpportunity:
             scored_at=datetime.now(timezone.utc),
         )
 
-    # ── Stage 1b + 3: Single LLM call (eligibility + scores) ────────────
     llm_result = await score_opportunity_with_llm(opp.model_dump())
 
     # ── Stage 1c: Resolve gating with LLM eligibility ───────────────────
@@ -58,8 +67,14 @@ async def score_opportunity(opp: OpportunityInput) -> ScoredOpportunity:
 
     gates = [extraction, eligibility, geography, reapplication]
     any_failed = any(not g.pass_ for g in gates)
+    geo_unknown = geography.specificity == "unknown"
 
-    gating_status = "needs_review" if any_failed else "passed"
+    if any_failed:
+        gating_status = "needs_review"
+    elif geo_unknown:
+        gating_status = "needs_review"  # location unspecified — human should confirm
+    else:
+        gating_status = "passed"
     gating = GatingResult(
         status=gating_status,
         extraction_confidence=extraction,

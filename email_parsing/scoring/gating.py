@@ -42,9 +42,9 @@ FAIL_TERMS = [
 
 
 def check_geography(location: str) -> GeographyGate:
-    loc_lower = location.lower()
+    loc_lower = location.lower().strip()
 
-    # Check explicit fail first
+    # Explicit out-of-area → hard fail
     if any(term in loc_lower for term in FAIL_TERMS):
         return GeographyGate(
             **{"pass": False},
@@ -52,22 +52,28 @@ def check_geography(location: str) -> GeographyGate:
             specificity=None,
         )
 
-    # Determine specificity
-    specificity: str | None = None
-    passed = False
+    # Unknown / not specified → pass with neutral specificity (no modifier boost,
+    # but not rejected — location may simply not have been mentioned in the email)
+    if not loc_lower or loc_lower in ("unknown", "n/a", "not specified", "unspecified"):
+        return GeographyGate(
+            **{"pass": True},
+            location=location,
+            specificity="unknown",
+        )
 
+    # Known good geographies — ranked for scoring modifier
     if any(term in loc_lower for term in KENT_AREAS) or "kent" in loc_lower:
         specificity = "kent_only"
-        passed = True
     elif any(term in loc_lower for term in ["south east", "southeast", "regional"]):
         specificity = "uk_regional"
-        passed = True
     elif any(term in loc_lower for term in ["nationwide", "national", "england", "uk"]):
         specificity = "uk_wide"
-        passed = True
+    else:
+        # Location mentioned but not a recognised term — pass but treat as unknown
+        specificity = "unknown"
 
     return GeographyGate(
-        **{"pass": passed},
+        **{"pass": True},
         location=location,
         specificity=specificity,
     )

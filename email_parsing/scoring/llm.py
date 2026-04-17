@@ -1,5 +1,5 @@
 """
-LLM scoring — Phase 1 mock implementation.
+LLM scoring — geography check uses real LLM; other dimensions are Phase 1 mocks.
 
 In Phase 2, replace the body of `score_opportunity_with_llm` with an Azure
 OpenAI call using the prompt defined in prompt.md. The function signature
@@ -7,6 +7,64 @@ and return shape stay identical.
 
 Single call returns eligibility + all four scoring dimensions.
 """
+
+import json
+import os
+import re
+
+
+async def check_geography_with_llm(location: str) -> dict:
+    """
+    Use the LLM to assess whether a grant's geographic scope is eligible
+    for a charity based in Kent, England.
+
+    Returns:
+        {
+            "pass": bool,
+            "specificity": "kent_only" | "uk_regional" | "uk_wide" | "unknown" | null,
+            "reasoning": str
+        }
+    """
+    from openai import AzureOpenAI
+
+    client = AzureOpenAI(
+        azure_endpoint=os.environ.get("AZURE_OPENAI_ENDPOINT", ""),
+        api_key=os.environ.get("AZURE_OPENAI_KEY", ""),
+        api_version="2024-10-21",
+    )
+    deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini")
+
+    prompt = f"""You are assessing geographic eligibility for a charity based in Kent, England.
+
+Grant location/geographic scope: "{location}"
+
+Return JSON only, no other text:
+{{
+  "pass": true or false,
+  "specificity": "kent_only" | "uk_regional" | "uk_wide" | "unknown" | null,
+  "reasoning": "one sentence"
+}}
+
+Rules:
+- pass=true if the grant is open to Kent-based organisations, OR if location is unspecified/unknown (give benefit of the doubt)
+- pass=false ONLY if the grant explicitly restricts to a region that excludes Kent (e.g. Scotland-only, Wales-only, West Midlands-only)
+- specificity="kent_only" if Kent or nearby areas (Canterbury, Medway, Thanet etc.) are specifically mentioned
+- specificity="uk_regional" if South East or a broader region that includes Kent is mentioned
+- specificity="uk_wide" if nationwide, England-wide, or UK-wide
+- specificity="unknown" if location is unspecified, blank, or unclear
+- specificity=null if pass=false (explicitly out of area)"""
+
+    response = client.chat.completions.create(
+        model=deployment,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0,
+        timeout=30,
+    )
+    raw = response.choices[0].message.content or ""
+    raw = re.sub(r"^```(?:json)?\s*", "", raw.strip(), flags=re.IGNORECASE)
+    raw = re.sub(r"\s*```$", "", raw.strip())
+    return json.loads(raw)
+
 
 ELIGIBILITY_KEYWORDS = [
     "wellbeing", "older people", "elderly", "isolation", "loneliness",

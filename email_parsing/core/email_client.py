@@ -127,7 +127,11 @@ def get_access_token() -> str:
 
 def fetch_unread_emails(max_count: int = 25) -> list[dict[str, Any]]:
     """
-    Retrieve up to *max_count* unread messages from the configured mailbox.
+    Retrieve up to *max_count* recent messages from the configured mailbox.
+
+    Fetches all recent messages regardless of read status so that emails
+    manually read by a human are not missed. Deduplication against already-
+    processed emails is handled downstream by storage.email_already_processed().
 
     Returns a list of dicts with keys:
         id, subject, from, receivedDateTime, body (plain text)
@@ -137,10 +141,9 @@ def fetch_unread_emails(max_count: int = 25) -> list[dict[str, Any]]:
 
     url = (
         f"{GRAPH_BASE}/users/{config.GRAPH_USER_EMAIL}/messages"
-        f"?$filter=isRead eq false"
-        f"&$select=id,subject,from,receivedDateTime,body"
+        f"?$select=id,subject,from,receivedDateTime,body"
         f"&$top={max_count}"
-        f"&$orderby=receivedDateTime asc"
+        f"&$orderby=receivedDateTime desc"
     )
 
     with httpx.Client(timeout=30) as client:

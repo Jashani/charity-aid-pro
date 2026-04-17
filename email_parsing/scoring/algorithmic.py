@@ -46,5 +46,6 @@ def get_geography_modifier(specificity: str | None) -> float:
         "kent_only": 1.10,
         "uk_regional": 1.05,
         "uk_wide": 1.00,
+        "unknown": 1.00,
     }
-    return modifiers.get(specificity or "", 1.00)
+    return modifiers.get(specificity or "unknown", 1.00)
