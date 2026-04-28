@@ -1,22 +1,24 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
 import { mockReminderRules, type ReminderRule } from '@/lib/mock-data';
-import type { DbReminderRule } from '@/lib/database.types';
 
-function mapRow(row: DbReminderRule): ReminderRule {
+function mapRow(row: Record<string, unknown>): ReminderRule {
   return {
-    id: row.id,
-    type: row.type,
-    name: row.name,
-    description: row.description,
-    timing: row.timing,
-    enabled: row.enabled,
-    lastSent: row.last_sent ?? undefined,
+    id: String(row.id ?? ''),
+    type: (row.type as ReminderRule['type']) ?? 'deadline',
+    name: String(row.name ?? ''),
+    description: String(row.description ?? ''),
+    timing: String(row.timing ?? ''),
+    enabled: Boolean(row.enabled ?? true),
+    lastSent: row.lastSent != null ? String(row.lastSent) : (row.last_sent != null ? String(row.last_sent) : undefined),
   };
 }
 
-async function fetchReminderRules(): Promise<ReminderRule[]> {
-  if (!supabase) return mockReminderRules;
+async function fetchReminderRules(): Promise<{ data: ReminderRule[]; source: 'supabase' | 'mock' }> {
+  if (!supabase) {
+    console.log('[useReminderRules] Supabase not configured → using mock data');
+    return { data: mockReminderRules, source: 'mock' };
+  }
 
   const { data, error } = await supabase
     .from('reminder_rules')
@@ -24,21 +26,29 @@ async function fetchReminderRules(): Promise<ReminderRule[]> {
     .order('type', { ascending: true });
 
   if (error) {
-    console.warn('Supabase fetch failed, using mock data:', error.message);
-    return mockReminderRules;
+    console.warn('[useReminderRules] Supabase query failed → using mock data:', error.message);
+    return { data: mockReminderRules, source: 'mock' };
   }
 
   if (!data || data.length === 0) {
-    return mockReminderRules;
+    console.log('[useReminderRules] Supabase returned empty → using mock data');
+    return { data: mockReminderRules, source: 'mock' };
   }
 
-  return (data as DbReminderRule[]).map(mapRow);
+  console.log(`[useReminderRules] ✅ Loaded ${data.length} rules from Supabase`);
+  return { data: data.map(mapRow), source: 'supabase' };
 }
 
 export function useReminderRules() {
-  return useQuery({
+  const query = useQuery({
     queryKey: ['reminderRules'],
     queryFn: fetchReminderRules,
     staleTime: 1000 * 60 * 5,
   });
+
+  return {
+    ...query,
+    data: query.data?.data ?? [],
+    dataSource: query.data?.source ?? 'mock',
+  };
 }

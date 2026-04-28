@@ -1,79 +1,64 @@
 /**
- * Database types for Supabase tables.
- * These mirror the TypeScript interfaces in mock-data.ts so that
- * data coming from the DB maps cleanly to the UI.
+ * Types matching the real data shape from the scoring pipeline (result.json).
  *
- * When your friend finalises the schema, update the table/column
- * names here if they differ from these defaults.
+ * The email parser outputs camelCase JSON. When stored in Supabase (Postgres),
+ * columns may be snake_case — the hooks handle both conventions.
  */
 
-export interface DbFundingOpportunity {
+// ── Scoring pipeline sub-types (from result.json) ─────────────
+
+export interface GatingResult {
+  status: 'passed' | 'failed' | 'needs_review';
+  extraction_confidence: { pass: boolean; value: number };
+  eligibility: { pass: boolean; confidence: number; reasoning: string };
+  geography: { pass: boolean; location: string; specificity: string | null };
+  reapplication: { pass: boolean; relationship: string };
+}
+
+export interface ScoringBreakdown {
+  strategic_fit: { raw: number; geography_modifier: number; final: number; reasoning: string };
+  funding_value: { score: number; amount_used: number };
+  probability: { score: number; reasoning: string };
+  effort: { score: number; reasoning: string };
+  strategic_value: { score: number; reasoning: string };
+}
+
+export interface TimingInfo {
+  score: number | null;
+  days_to_deadline: number | null;
+}
+
+// ── Main opportunity type as it comes from the pipeline ────────
+
+export interface PipelineOpportunity {
   id: string;
-  funder_name: string;
-  program_name: string;
+  funderName: string;
+  programName: string;
   amount: number;
-  amount_max?: number | null;
+  amountMax: number | null;
   type: 'grant' | 'trust' | 'lottery' | 'corporate' | 'government';
-  deadline: string;
+  deadline: string; // may be "unknown"
   location: string;
   duration: 'single-year' | 'multi-year';
-  duration_months: number;
+  durationMonths: number;
   relationship: 'new' | 'previously-applied' | 'existing-funder' | 're-eligible';
   status: 'identified' | 'researching' | 'applying' | 'submitted' | 'awarded' | 'rejected';
-  score: number;
+  score: number; // raw score (usually 0 from pipeline)
   tags: string[];
   description: string;
   eligibility: string;
   notes: string;
   website: string;
-  contact_name?: string | null;
-  contact_email?: string | null;
-  rejection_feedback?: string | null;
-  last_applied?: string | null;
+  contactName: string | null;
+  contactEmail: string | null;
   source: string;
-  created_at?: string;
-  updated_at?: string;
-}
 
-export interface DbActiveFunding {
-  id: string;
-  funder_name: string;
-  program_name: string;
-  amount: number;
-  start_date: string;
-  end_date: string;
-  type: 'grant' | 'trust' | 'lottery' | 'corporate' | 'government';
-  renewal_eligible: boolean;
-  notes: string;
-  created_at?: string;
-  updated_at?: string;
-}
-
-export interface DbFunderContact {
-  id: string;
-  name: string;
-  organisation: string;
-  email: string;
-  phone?: string | null;
-  role: string;
-  relationship_score: number;
-  total_funded: number;
-  applications_count: number;
-  success_rate: number;
-  last_contact: string;
-  notes: string;
-  created_at?: string;
-  updated_at?: string;
-}
-
-export interface DbReminderRule {
-  id: string;
-  type: 'deadline' | 'renewal' | 're-eligibility' | 'digest';
-  name: string;
-  description: string;
-  timing: string;
-  enabled: boolean;
-  last_sent?: string | null;
-  created_at?: string;
-  updated_at?: string;
+  // Pipeline-specific fields
+  extractionConfidence: number;
+  gating: GatingResult | null;
+  scores: ScoringBreakdown | null;
+  timing: TimingInfo | null;
+  final_score: number | null; // ← this is the real score the UI should display
+  suggested_tags: string[];
+  scored_at: string;
 }

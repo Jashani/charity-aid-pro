@@ -2,6 +2,8 @@ export type FundingType = 'grant' | 'trust' | 'lottery' | 'corporate' | 'governm
 export type OpportunityStatus = 'identified' | 'researching' | 'applying' | 'submitted' | 'awarded' | 'rejected';
 export type RelationshipStatus = 'new' | 'previously-applied' | 'existing-funder' | 're-eligible';
 
+import type { GatingResult, ScoringBreakdown, TimingInfo } from './database.types';
+
 export interface FundingOpportunity {
   id: string;
   funderName: string;
@@ -26,6 +28,11 @@ export interface FundingOpportunity {
   rejectionFeedback?: string;
   lastApplied?: string;
   source: string;
+  extractionConfidence?: number;
+  gating?: GatingResult | null;
+  scores?: ScoringBreakdown | null;
+  timing?: TimingInfo | null;
+  scored_at?: string;
 }
 
 export interface ActiveFunding {
