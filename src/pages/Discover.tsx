@@ -24,11 +24,12 @@ import {
   Calendar,
   FileText,
   Users,
+  Loader2,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { toast } from "sonner";
+import { useOpportunities } from "@/hooks/useOpportunities";
 import {
-  mockOpportunities,
   formatCurrency,
   daysUntil,
   getRelationshipLabel,
@@ -36,6 +37,7 @@ import {
 } from "@/lib/mock-data";
 
 const Discover = () => {
+  const { data: allOpportunities = [], isLoading } = useOpportunities();
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [durationFilter, setDurationFilter] = useState<string>("all");
@@ -48,12 +50,12 @@ const Discover = () => {
   const [selectedOpp, setSelectedOpp] = useState<FundingOpportunity | null>(null);
 
   const locations = useMemo(
-    () => [...new Set(mockOpportunities.map((o) => o.location))],
-    []
+    () => [...new Set(allOpportunities.map((o) => o.location))],
+    [allOpportunities]
   );
 
   const filtered = useMemo(() => {
-    let result = mockOpportunities.filter(
+    let result = allOpportunities.filter(
       (o) => o.status !== "awarded" && o.status !== "rejected"
     );
 
@@ -82,7 +84,7 @@ const Discover = () => {
     });
 
     return result;
-  }, [searchTerm, typeFilter, durationFilter, relationshipFilter, locationFilter, sortBy, amountRange]);
+  }, [allOpportunities, searchTerm, typeFilter, durationFilter, relationshipFilter, locationFilter, sortBy, amountRange]);
 
   const getTagStyle = (tag: string) => {
     switch (tag) {
@@ -109,6 +111,16 @@ const Discover = () => {
       toast.success("Scan complete — no new opportunities found");
     }, 2000);
   };
+
+  if (isLoading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-[60vh]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>

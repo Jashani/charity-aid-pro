@@ -14,11 +14,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { GripVertical, Plus, MessageSquare, ChevronDown, ChevronUp } from "lucide-react";
+import { GripVertical, Plus, MessageSquare, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { toast } from "sonner";
+import { useOpportunities } from "@/hooks/useOpportunities";
 import {
-  mockOpportunities,
   formatCurrency,
   daysUntil,
   type FundingOpportunity,
@@ -35,7 +35,9 @@ const columns: { id: OpportunityStatus; label: string; color: string }[] = [
 ];
 
 const Pipeline = () => {
-  const [opportunities, setOpportunities] = useState<FundingOpportunity[]>(mockOpportunities);
+  const { data: fetchedOpportunities = [], isLoading } = useOpportunities();
+  const [opportunities, setOpportunities] = useState<FundingOpportunity[]>([]);
+  const [hasInitialized, setHasInitialized] = useState(false);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
   const [collapsedCols, setCollapsedCols] = useState<Set<string>>(new Set());
@@ -100,6 +102,22 @@ const Pipeline = () => {
     setNewOpp({ funderName: "", programName: "", amount: "", deadline: "", type: "trust" });
     toast.success(`"${opp.funderName}" added to pipeline`);
   };
+
+  // Sync fetched data into local state (only on first load)
+  if (!hasInitialized && fetchedOpportunities.length > 0) {
+    setOpportunities(fetchedOpportunities);
+    setHasInitialized(true);
+  }
+
+  if (isLoading && !hasInitialized) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-[60vh]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>

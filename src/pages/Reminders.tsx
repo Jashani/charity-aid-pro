@@ -13,10 +13,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Bell, Mail, Clock, RefreshCw, CalendarCheck, Newspaper, Eye, X } from "lucide-react";
+import { Bell, Mail, Clock, RefreshCw, CalendarCheck, Newspaper, Eye, X, Loader2 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { toast } from "sonner";
-import { mockReminderRules, type ReminderRule } from "@/lib/mock-data";
+import { useReminderRules } from "@/hooks/useReminderRules";
+import { type ReminderRule } from "@/lib/mock-data";
 
 const typeIcons: Record<string, React.ReactNode> = {
   deadline: <Clock className="h-5 w-5 text-warning" />,
@@ -32,7 +33,9 @@ interface Recipient {
 }
 
 const Reminders = () => {
-  const [rules, setRules] = useState<ReminderRule[]>(mockReminderRules);
+  const { data: fetchedRules = [], isLoading } = useReminderRules();
+  const [rules, setRules] = useState<ReminderRule[]>([]);
+  const [hasInitialized, setHasInitialized] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showAddRecipient, setShowAddRecipient] = useState(false);
   const [newEmail, setNewEmail] = useState("");
@@ -64,6 +67,22 @@ const Reminders = () => {
     setRecipients((prev) => prev.filter((r) => r.email !== email));
     toast.success("Recipient removed");
   };
+
+  // Sync fetched data into local state (only on first load)
+  if (!hasInitialized && fetchedRules.length > 0) {
+    setRules(fetchedRules);
+    setHasInitialized(true);
+  }
+
+  if (isLoading && !hasInitialized) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-[60vh]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
