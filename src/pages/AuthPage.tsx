@@ -10,7 +10,7 @@ import { Music, Mail, Lock, Loader2, AlertCircle, ArrowRight } from 'lucide-reac
 type AuthMode = 'sign-in' | 'sign-up';
 
 const AuthPage = () => {
-  const { user, signIn, signUp, isConfigured } = useAuth();
+  const { user, signIn, signUp } = useAuth();
   const [mode, setMode] = useState<AuthMode>('sign-in');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -21,11 +21,6 @@ const AuthPage = () => {
 
   // If already logged in, redirect to dashboard
   if (user) {
-    return <Navigate to="/" replace />;
-  }
-
-  // If Supabase isn't configured, redirect to dashboard (mock mode)
-  if (!isConfigured) {
     return <Navigate to="/" replace />;
   }
 

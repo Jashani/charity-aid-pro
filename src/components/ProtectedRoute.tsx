@@ -3,12 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Music } from 'lucide-react';
 
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading, isConfigured } = useAuth();
-
-  // If Supabase isn't configured, let users through (dev mode with mock data)
-  if (!isConfigured) {
-    return <>{children}</>;
-  }
+  const { user, loading } = useAuth();
 
   if (loading) {
     return (
