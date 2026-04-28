@@ -6,8 +6,9 @@ import { LogOut, User } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, signOut, isConfigured } = useAuth();
+  const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const isConfigured = true;
 
   const handleSignOut = async () => {
     await signOut();
