@@ -2,7 +2,6 @@ from scoring.models import (
     ExtractionConfidenceGate,
     EligibilityGate,
     GeographyGate,
-    ReapplicationGate,
 )
 
 # ── Extraction Confidence (algorithmic) ──────────────────────────────────────
@@ -10,7 +9,6 @@ from scoring.models import (
 def check_extraction_confidence(confidence: float) -> ExtractionConfidenceGate:
     return ExtractionConfidenceGate(
         **{"pass": confidence >= 0.5},
-        value=confidence,
     )
 
 
@@ -74,19 +72,5 @@ def check_geography(location: str) -> GeographyGate:
 
     return GeographyGate(
         **{"pass": True},
-        location=location,
         specificity=specificity,
-    )
-
-
-# ── Reapplication (algorithmic on relationship field) ────────────────────────
-
-def check_reapplication(relationship: str) -> ReapplicationGate:
-    if relationship in ("new", "re-eligible", "existing-funder"):
-        passed = True
-    else:
-        passed = False  # "previously-applied" → needs_review
-    return ReapplicationGate(
-        **{"pass": passed},
-        relationship=relationship,
     )

@@ -1,6 +1,5 @@
 export type FundingType = 'grant' | 'trust' | 'lottery' | 'corporate' | 'government';
 export type OpportunityStatus = 'identified' | 'researching' | 'applying' | 'submitted' | 'awarded' | 'rejected';
-export type RelationshipStatus = 'new' | 'previously-applied' | 'existing-funder' | 're-eligible';
 
 export interface FundingOpportunity {
   id: string;
@@ -13,7 +12,6 @@ export interface FundingOpportunity {
   location: string;
   duration: 'single-year' | 'multi-year';
   durationMonths: number;
-  relationship: RelationshipStatus;
   status: OpportunityStatus;
   score: number;
   tags: string[];
@@ -23,8 +21,6 @@ export interface FundingOpportunity {
   website: string;
   contactName?: string;
   contactEmail?: string;
-  rejectionFeedback?: string;
-  lastApplied?: string;
   source: string;
 }
 
@@ -78,7 +74,6 @@ export const mockOpportunities: FundingOpportunity[] = [
     location: 'England',
     duration: 'single-year',
     durationMonths: 12,
-    relationship: 'existing-funder',
     status: 'identified',
     score: 95,
     tags: ['Quick Win', 'Previously Applied'],
@@ -88,7 +83,6 @@ export const mockOpportunities: FundingOpportunity[] = [
     website: 'https://www.artscouncil.org.uk',
     contactName: 'Sarah Mitchell',
     contactEmail: 'grants@artscouncil.org.uk',
-    lastApplied: '2025-03-01',
     source: 'Arts Council Website',
   },
   {
@@ -102,7 +96,6 @@ export const mockOpportunities: FundingOpportunity[] = [
     location: 'England',
     duration: 'multi-year',
     durationMonths: 36,
-    relationship: 'previously-applied',
     status: 'researching',
     score: 88,
     tags: ['Multi-Year', 'Previously Applied'],
@@ -112,8 +105,6 @@ export const mockOpportunities: FundingOpportunity[] = [
     website: 'https://www.tnlcommunityfund.org.uk',
     contactName: 'James Patterson',
     contactEmail: 'funding@tnlcf.org.uk',
-    rejectionFeedback: 'Need stronger evidence of community need and measurable outcomes.',
-    lastApplied: '2024-09-15',
     source: 'TNLCF Newsletter',
   },
   {
@@ -127,7 +118,6 @@ export const mockOpportunities: FundingOpportunity[] = [
     location: 'UK-wide',
     duration: 'single-year',
     durationMonths: 12,
-    relationship: 'existing-funder',
     status: 'applying',
     score: 92,
     tags: ['Quick Win', 'Previously Applied'],
@@ -137,7 +127,6 @@ export const mockOpportunities: FundingOpportunity[] = [
     website: 'https://www.youthmusic.org.uk',
     contactName: 'Emily Chen',
     contactEmail: 'grants@youthmusic.org.uk',
-    lastApplied: '2025-01-10',
     source: 'Youth Music Newsletter',
   },
   {
@@ -151,7 +140,6 @@ export const mockOpportunities: FundingOpportunity[] = [
     location: 'UK-wide',
     duration: 'single-year',
     durationMonths: 12,
-    relationship: 'new',
     status: 'identified',
     score: 75,
     tags: ['Capital Cost'],
@@ -172,7 +160,6 @@ export const mockOpportunities: FundingOpportunity[] = [
     location: 'UK-wide',
     duration: 'multi-year',
     durationMonths: 36,
-    relationship: 're-eligible',
     status: 'identified',
     score: 85,
     tags: ['Multi-Year', 'Re-eligible'],
@@ -182,7 +169,6 @@ export const mockOpportunities: FundingOpportunity[] = [
     website: 'https://www.bbcchildreninneed.co.uk',
     contactName: 'David Roberts',
     contactEmail: 'pudsey@bbc.co.uk',
-    lastApplied: '2022-06-01',
     source: 'BBC CiN Website',
   },
   {
@@ -196,7 +182,6 @@ export const mockOpportunities: FundingOpportunity[] = [
     location: 'UK-wide',
     duration: 'single-year',
     durationMonths: 6,
-    relationship: 'new',
     status: 'identified',
     score: 70,
     tags: ['Quick Win'],
@@ -217,7 +202,6 @@ export const mockOpportunities: FundingOpportunity[] = [
     location: 'UK-wide',
     duration: 'multi-year',
     durationMonths: 36,
-    relationship: 'new',
     status: 'identified',
     score: 72,
     tags: ['Multi-Year'],
@@ -238,7 +222,6 @@ export const mockOpportunities: FundingOpportunity[] = [
     location: 'North & West London',
     duration: 'single-year',
     durationMonths: 12,
-    relationship: 'existing-funder',
     status: 'submitted',
     score: 90,
     tags: ['Previously Applied'],
@@ -248,7 +231,6 @@ export const mockOpportunities: FundingOpportunity[] = [
     website: 'https://www.jlc.london',
     contactName: 'Anna Whitfield',
     contactEmail: 'grants@jlc.london',
-    lastApplied: '2026-02-20',
     source: 'Direct Contact',
   },
   {
@@ -262,7 +244,6 @@ export const mockOpportunities: FundingOpportunity[] = [
     location: 'UK-wide',
     duration: 'single-year',
     durationMonths: 12,
-    relationship: 'previously-applied',
     status: 'identified',
     score: 78,
     tags: ['Quick Win'],
@@ -270,7 +251,6 @@ export const mockOpportunities: FundingOpportunity[] = [
     eligibility: 'Musicians and music organisations based in the UK.',
     notes: 'Applied before for a different programme. Good relationship.',
     website: 'https://www.helpmusicians.org.uk',
-    lastApplied: '2024-11-01',
     source: 'Help Musicians Newsletter',
   },
   {
@@ -284,7 +264,6 @@ export const mockOpportunities: FundingOpportunity[] = [
     location: 'London',
     duration: 'multi-year',
     durationMonths: 24,
-    relationship: 'new',
     status: 'identified',
     score: 65,
     tags: ['Multi-Year'],

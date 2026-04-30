@@ -157,7 +157,6 @@ def test_parse_email_escalates_extraction_when_opportunity_confidence_low(monkey
         location="UK",
         duration="single-year",
         durationMonths=12,
-        relationship="new",
         status="identified",
         score=70,
         tags=[],

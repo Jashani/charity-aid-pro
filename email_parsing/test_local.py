@@ -169,7 +169,7 @@ def print_result(result):
         print(f"      Score    : {fmt_score(opp.final_score)} / 100")
         if opp.gating:
             print(f"      Gating   : {opp.gating.status}")
-            print(f"        geography  : {'pass' if opp.gating.geography.pass_ else 'FAIL'} ({opp.gating.geography.location})")
+            print(f"        geography  : {'pass' if opp.gating.geography.pass_ else 'FAIL'} ({opp.location})")
             print(f"        eligibility: {'pass' if opp.gating.eligibility.pass_ else 'FAIL'} — {opp.gating.eligibility.reasoning}")
         if opp.suggested_tags:
             print(f"      Tags     : {', '.join(opp.suggested_tags)}")

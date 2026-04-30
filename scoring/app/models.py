@@ -17,13 +17,6 @@ class GrantType(str, Enum):
     government = "government"
 
 
-class Relationship(str, Enum):
-    new = "new"
-    previously_applied = "previously-applied"
-    existing_funder = "existing-funder"
-    re_eligible = "re-eligible"
-
-
 class Duration(str, Enum):
     single_year = "single-year"
     multi_year = "multi-year"
@@ -49,7 +42,6 @@ class OpportunityInput(BaseModel):
     location: str
     duration: Duration
     durationMonths: int = 12
-    relationship: Relationship
     status: Status
     score: float = 0
     tags: list[str] = Field(default_factory=list)
@@ -72,7 +64,7 @@ class GatingCheck(BaseModel):
 
 
 class ExtractionConfidenceGate(GatingCheck):
-    value: float
+    pass
 
 
 class EligibilityGate(GatingCheck):
@@ -81,12 +73,7 @@ class EligibilityGate(GatingCheck):
 
 
 class GeographyGate(GatingCheck):
-    location: str
     specificity: str | None = None
-
-
-class ReapplicationGate(GatingCheck):
-    relationship: str
 
 
 class GatingResult(BaseModel):
@@ -94,18 +81,15 @@ class GatingResult(BaseModel):
     extraction_confidence: ExtractionConfidenceGate
     eligibility: EligibilityGate
     geography: GeographyGate
-    reapplication: ReapplicationGate
 
 
 class StrategicFitScore(BaseModel):
     raw: float
-    geography_modifier: float
     final: float
     reasoning: str
 
 
 class FundingValueScore(BaseModel):
-    score: int
     amount_used: float
 
 
@@ -122,17 +106,12 @@ class ScoresResult(BaseModel):
     strategic_value: ReasonedScore
 
 
-class TimingResult(BaseModel):
-    score: int | None
-    days_to_deadline: int | None
-
-
 # ── Output (input opportunity + scoring appended) ───────────────────────────
 
 class ScoredOpportunity(OpportunityInput):
     gating: GatingResult
     scores: ScoresResult | None = None
-    timing: TimingResult | None = None
-    final_score: float | None = None
+    timing: dict | None = None  # Computed: {score, days_to_deadline}
+    final_score: float | None = None  # Computed: weighted composite
     suggested_tags: list[str] = Field(default_factory=list)
     scored_at: datetime

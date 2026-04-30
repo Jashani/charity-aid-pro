@@ -3,11 +3,10 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 
-from scoring.algorithmic import get_geography_modifier, score_funding_value, score_timing
+from scoring.algorithmic import score_funding_value
 from scoring.gating import (
     check_eligibility,
     check_extraction_confidence,
-    check_reapplication,
 )
 from scoring.llm import check_geography_with_llm, score_opportunity_with_llm
 from scoring.models import (
@@ -19,7 +18,6 @@ from scoring.models import (
     ScoredOpportunity,
     ScoresResult,
     StrategicFitScore,
-    TimingResult,
 )
 
 
@@ -28,7 +26,6 @@ async def score_opportunity(opp: OpportunityInput) -> ScoredOpportunity:
 
     # ── Stage 1a: Algorithmic gates ──────────────────────────────────────
     extraction = check_extraction_confidence(opp.extractionConfidence)
-    reapplication = check_reapplication(opp.relationship.value)
 
     # ── Stage 1b: LLM geography check (falls back to keyword if LLM fails) ─
     try:
@@ -52,7 +49,6 @@ async def score_opportunity(opp: OpportunityInput) -> ScoredOpportunity:
             extraction_confidence=extraction,
             eligibility=eligibility,
             geography=geography,
-            reapplication=reapplication,
         )
         return ScoredOpportunity(
             **opp.model_dump(),
@@ -65,7 +61,7 @@ async def score_opportunity(opp: OpportunityInput) -> ScoredOpportunity:
     # ── Stage 1c: Resolve gating with LLM eligibility ───────────────────
     eligibility = check_eligibility(llm_result["eligibility"])
 
-    gates = [extraction, eligibility, geography, reapplication]
+    gates = [extraction, eligibility, geography]
     any_failed = any(not g.pass_ for g in gates)
     geo_unknown = geography.specificity == "unknown"
 
@@ -80,37 +76,22 @@ async def score_opportunity(opp: OpportunityInput) -> ScoredOpportunity:
         extraction_confidence=extraction,
         eligibility=eligibility,
         geography=geography,
-        reapplication=reapplication,
     )
 
     # ── Stage 2: Algorithmic scores ──────────────────────────────────────
     fv_score, fv_amount = score_funding_value(opp.amount, opp.amountMax)
-    timing_score, timing_days = score_timing(opp.deadline)
-    geo_modifier = get_geography_modifier(geography.specificity)
 
-    # ── Stage 4: Combine & weight ────────────────────────────────────────
+    # ── Stage 3: Score extraction ────────────────────────────────────────
     strategic_fit_raw = llm_result["strategic_fit"]["score"]
-    strategic_fit_final = min(strategic_fit_raw * geo_modifier, 10)
+    strategic_fit_final = min(strategic_fit_raw, 10)  # Cap at 10
 
     effort_score = llm_result["effort"]["score"]
     probability_score = llm_result["probability"]["score"]
     strategic_value_score = llm_result["strategic_value"]["score"]
 
-    final_score = round(
-        (
-            strategic_fit_final * 0.30
-            + fv_score * 0.35
-            + probability_score * 0.15
-            + strategic_value_score * 0.15
-            + effort_score * 0.05
-        )
-        * 10,
-        1,
-    )
-
     # ── Tag generation ───────────────────────────────────────────────────
     suggested_tags: list[str] = []
-    if effort_score >= 8 and timing_score is not None and timing_score >= 8:
+    if effort_score >= 8:
         suggested_tags.append("Quick Win")
     if opp.duration == "multi-year":
         suggested_tags.append("Multi-Year")
@@ -123,23 +104,32 @@ async def score_opportunity(opp: OpportunityInput) -> ScoredOpportunity:
     scores = ScoresResult(
         strategic_fit=StrategicFitScore(
             raw=strategic_fit_raw,
-            geography_modifier=geo_modifier,
             final=round(strategic_fit_final, 2),
             reasoning=llm_result["strategic_fit"]["reasoning"],
         ),
-        funding_value=FundingValueScore(score=fv_score, amount_used=fv_amount),
+        funding_value=FundingValueScore(amount_used=fv_amount),
         probability=ReasonedScore(**llm_result["probability"]),
         effort=ReasonedScore(**llm_result["effort"]),
         strategic_value=ReasonedScore(**llm_result["strategic_value"]),
     )
 
-    timing = TimingResult(score=timing_score, days_to_deadline=timing_days)
+    # Compute final score from component scores
+    final_score = round(
+        (
+            strategic_fit_final * 0.30
+            + effort_score * 0.05  # effort has minimal weight
+            + probability_score * 0.15
+            + strategic_value_score * 0.15
+            + (fv_amount / 50000) * 10 * 0.35  # normalize amount to 0-10 scale
+        ),
+        1,
+    )
 
     return ScoredOpportunity(
         **opp.model_dump(),
         gating=gating,
         scores=scores,
-        timing=timing,
+        timing={"score": None, "days_to_deadline": None},  # Placeholder
         final_score=final_score,
         suggested_tags=suggested_tags,
         scored_at=datetime.now(timezone.utc),

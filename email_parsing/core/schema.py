@@ -24,8 +24,6 @@ OpportunityStatus = Literal[
     "rejected",
 ]
 
-RelationshipStatus = Literal["new", "previously-applied", "existing-funder", "re-eligible"]
-
 DurationType = Literal["single-year", "multi-year"]
 
 ClassificationLabel = Literal["FUNDING_OPPORTUNITY", "NEWSLETTER", "IRRELEVANT"]
@@ -51,10 +49,6 @@ class FundingOpportunity(BaseModel):
     location: str = Field(description="Geographic scope / eligibility area")
     duration: DurationType = Field(description="Whether the grant is single-year or multi-year")
     durationMonths: int = Field(description="Funding duration in months")
-    relationship: RelationshipStatus = Field(
-        default="new",
-        description="Charity's relationship with this funder",
-    )
     status: OpportunityStatus = Field(
         default="identified",
         description="Current pipeline status for this opportunity",
@@ -85,8 +79,8 @@ class FundingOpportunity(BaseModel):
     # Scoring fields (populated after scoring pipeline)
     gating: Any | None = Field(default=None, description="Gating check results")
     scores: Any | None = Field(default=None, description="Scoring dimension results")
-    timing: Any | None = Field(default=None, description="Timing score and days to deadline")
-    final_score: float | None = Field(default=None, description="Pipeline-computed score (0–100)")
+    timing: Any | None = Field(default=None, description="Timing score and days to deadline (computed)")
+    final_score: float | None = Field(default=None, description="Composite score 0–100 (computed)")
     suggested_tags: list[str] = Field(default_factory=list, description="Tags suggested by scoring pipeline")
     scored_at: datetime | None = Field(default=None, description="When scoring ran (UTC)")
 

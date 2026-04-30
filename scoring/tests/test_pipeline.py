@@ -16,7 +16,6 @@ def _sample_opportunity(**overrides) -> dict:
         "location": "Kent",
         "duration": "single-year",
         "durationMonths": 12,
-        "relationship": "new",
         "status": "identified",
         "score": 0,
         "tags": [],
@@ -104,15 +103,6 @@ async def test_geography_fail_skips_scoring(client):
 
 
 @pytest.mark.asyncio
-async def test_previously_applied_needs_review(client):
-    opp = _sample_opportunity(relationship="previously-applied")
-    resp = await client.post("/score", json=[opp])
-    data = resp.json()[0]
-    assert data["gating"]["status"] == "needs_review"
-    assert data["scores"] is not None
-
-
-@pytest.mark.asyncio
 async def test_high_value_tag(client):
     opp = _sample_opportunity(amount=50000, amountMax=None)
     resp = await client.post("/score", json=[opp])
@@ -121,11 +111,11 @@ async def test_high_value_tag(client):
 
 
 @pytest.mark.asyncio
-async def test_kent_geography_modifier_applied(client):
+async def test_kent_geography_does_not_apply_modifier(client):
     opp = _sample_opportunity(location="Kent")
     resp = await client.post("/score", json=[opp])
     data = resp.json()[0]
-    assert data["scores"]["strategic_fit"]["geography_modifier"] == 1.10
+    assert data["scores"]["strategic_fit"]["final"] <= data["scores"]["strategic_fit"]["raw"]
 
 
 @pytest.mark.asyncio

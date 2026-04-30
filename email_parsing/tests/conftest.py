@@ -38,7 +38,6 @@ def sample_opportunity() -> FundingOpportunity:
         location="UK",
         duration="single-year",
         durationMonths=12,
-        relationship="new",
         status="identified",
         score=82,
         tags=["youth", "community"],

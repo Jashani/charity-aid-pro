@@ -4,7 +4,6 @@ from app.gating import (
     check_eligibility,
     check_extraction_confidence,
     check_geography,
-    check_reapplication,
 )
 
 
@@ -12,7 +11,6 @@ class TestExtractionConfidence:
     def test_high_confidence_passes(self):
         result = check_extraction_confidence(0.85)
         assert result.pass_ is True
-        assert result.value == 0.85
 
     def test_low_confidence_fails(self):
         result = check_extraction_confidence(0.3)
@@ -73,18 +71,3 @@ class TestGeography:
         result = check_geography("Specific region TBD")
         assert result.pass_ is False
         assert result.specificity is None
-
-
-class TestReapplication:
-    def test_new_passes(self):
-        assert check_reapplication("new").pass_ is True
-
-    def test_re_eligible_passes(self):
-        assert check_reapplication("re-eligible").pass_ is True
-
-    def test_existing_funder_passes(self):
-        assert check_reapplication("existing-funder").pass_ is True
-
-    def test_previously_applied_needs_review(self):
-        result = check_reapplication("previously-applied")
-        assert result.pass_ is False
