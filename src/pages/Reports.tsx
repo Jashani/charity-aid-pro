@@ -9,62 +9,45 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart";
 import { BarChart, Bar, XAxis, YAxis, PieChart, Pie, Cell } from "recharts";
-import { Download, Printer, TrendingUp, TrendingDown, CheckCircle } from "lucide-react";
+import { Download, Printer, TrendingUp, TrendingDown, CheckCircle, Loader2 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { toast } from "sonner";
-import {
-  mockOpportunities,
-  mockActiveFunding,
-  formatCurrency,
-  daysUntil,
-} from "@/lib/mock-data";
-
-const quarters = [
-  { value: "q1-2026", label: "Q1 2026 (Jan–Mar)" },
-  { value: "q4-2025", label: "Q4 2025 (Oct–Dec)" },
-  { value: "q3-2025", label: "Q3 2025 (Jul–Sep)" },
-];
-
-const totalActive = mockActiveFunding.reduce((s, f) => s + f.amount, 0);
-const expiringSoonValue = mockActiveFunding
-  .filter((f) => daysUntil(f.endDate) <= 90 && daysUntil(f.endDate) > 0)
-  .reduce((s, f) => s + f.amount, 0);
-const securedPercentage = totalActive > 0 ? Math.round(((totalActive - expiringSoonValue) / totalActive) * 100) : 0;
-
-const totalApps = mockOpportunities.length;
-const submitted = mockOpportunities.filter((o) => o.status === "submitted").length;
-const awarded = mockOpportunities.filter((o) => o.status === "awarded").length;
-const rejected = mockOpportunities.filter((o) => o.status === "rejected").length;
-const inProgress = mockOpportunities.filter((o) => ["researching", "applying"].includes(o.status)).length;
-const successRate = (submitted + awarded + rejected) > 0
-  ? Math.round((awarded / (submitted + awarded + rejected)) * 100)
-  : 0;
-
-const fundingBySource = [
-  { source: "Trust", amount: 78500, fill: "hsl(var(--primary))" },
-  { source: "Lottery", amount: 21800, fill: "hsl(var(--accent))" },
-];
-
-const applicationProgress = [
-  { stage: "Identified", count: mockOpportunities.filter(o => o.status === "identified").length },
-  { stage: "In Progress", count: inProgress },
-  { stage: "Submitted", count: submitted },
-  { stage: "Awarded", count: awarded },
-  { stage: "Rejected", count: rejected },
-];
-
-const sourceChartConfig: ChartConfig = {
-  amount: { label: "Amount" },
-  Trust: { label: "Trust", color: "hsl(var(--primary))" },
-  Lottery: { label: "Lottery", color: "hsl(var(--accent))" },
-};
-
-const progressChartConfig: ChartConfig = {
-  count: { label: "Applications", color: "hsl(var(--primary))" },
-};
+import { useOpportunities } from "@/hooks/useOpportunities";
+import { useActiveFunding } from "@/hooks/useActiveFunding";
+import { formatCurrency, daysUntil } from "@/lib/mock-data";
 
 const Reports = () => {
+  const { data: opportunities = [], isLoading: loadingOpps } = useOpportunities();
+  const { data: activeFunding = [], isLoading: loadingFunding } = useActiveFunding();
+  const isLoading = loadingOpps || loadingFunding;
   const [selectedQuarter, setSelectedQuarter] = useState("q1-2026");
+
+  const totalActive = activeFunding.reduce((s, f) => s + f.amount, 0);
+  const expiringSoonValue = activeFunding
+    .filter((f) => daysUntil(f.endDate) <= 90 && daysUntil(f.endDate) > 0)
+    .reduce((s, f) => s + f.amount, 0);
+  const securedPercentage = totalActive > 0 ? Math.round(((totalActive - expiringSoonValue) / totalActive) * 100) : 0;
+
+  const totalApps = opportunities.length;
+  const submitted = opportunities.filter((o) => o.status === "submitted").length;
+  const awarded = opportunities.filter((o) => o.status === "awarded").length;
+  const rejected = opportunities.filter((o) => o.status === "rejected").length;
+  const inProgress = opportunities.filter((o) => ["researching", "applying"].includes(o.status)).length;
+  const successRate = (submitted + awarded + rejected) > 0
+    ? Math.round((awarded / (submitted + awarded + rejected)) * 100) : 0;
+
+  const fundingBySource = [
+    { source: "Trust", amount: activeFunding.filter(f => f.type === "trust").reduce((s, f) => s + f.amount, 0), fill: "hsl(var(--primary))" },
+    { source: "Lottery", amount: activeFunding.filter(f => f.type === "lottery").reduce((s, f) => s + f.amount, 0), fill: "hsl(var(--accent))" },
+  ];
+
+  const applicationProgress = [
+    { stage: "Identified", count: opportunities.filter(o => o.status === "identified").length },
+    { stage: "In Progress", count: inProgress },
+    { stage: "Submitted", count: submitted },
+    { stage: "Awarded", count: awarded },
+    { stage: "Rejected", count: rejected },
+  ];
 
   const handlePrint = () => {
     window.print();
@@ -74,7 +57,7 @@ const Reports = () => {
     const rows = [
       ["Metric", "Value"],
       ["Total Active Funding", formatCurrency(totalActive)],
-      ["Number of Grants", String(mockActiveFunding.length)],
+      ["Number of Grants", String(activeFunding.length)],
       ["Ending Soon (value)", formatCurrency(expiringSoonValue)],
       ["Secured %", `${securedPercentage}%`],
       [""],
@@ -90,7 +73,7 @@ const Reports = () => {
       [""],
       ["Active Grants"],
       ["Funder", "Programme", "Amount", "Start", "End", "Renewable"],
-      ...mockActiveFunding.map((f) => [
+      ...activeFunding.map((f) => [
         f.funderName, f.programName, formatCurrency(f.amount),
         f.startDate, f.endDate, f.renewalEligible ? "Yes" : "No",
       ]),
@@ -105,6 +88,32 @@ const Reports = () => {
     URL.revokeObjectURL(url);
     toast.success("Report downloaded");
   };
+
+  const quarters = [
+    { value: "q1-2026", label: "Q1 2026 (Jan–Mar)" },
+    { value: "q4-2025", label: "Q4 2025 (Oct–Dec)" },
+    { value: "q3-2025", label: "Q3 2025 (Jul–Sep)" },
+  ];
+
+  const sourceChartConfig: ChartConfig = {
+    amount: { label: "Amount" },
+    Trust: { label: "Trust", color: "hsl(var(--primary))" },
+    Lottery: { label: "Lottery", color: "hsl(var(--accent))" },
+  };
+
+  const progressChartConfig: ChartConfig = {
+    count: { label: "Applications", color: "hsl(var(--primary))" },
+  };
+
+  if (isLoading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-[60vh]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -140,8 +149,8 @@ const Reports = () => {
           <h2 className="text-lg font-semibold">Financial Health</h2>
           <div className="grid gap-4 sm:grid-cols-3">
             {[
-              { label: "Total Active", value: formatCurrency(totalActive), sub: `${mockActiveFunding.length} grants`, icon: TrendingUp, color: "text-primary" },
-              { label: "Ending Soon", value: formatCurrency(expiringSoonValue), sub: `${mockActiveFunding.filter(f => daysUntil(f.endDate) <= 90 && daysUntil(f.endDate) > 0).length} expiring`, icon: TrendingDown, color: "text-destructive" },
+              { label: "Total Active", value: formatCurrency(totalActive), sub: `${activeFunding.length} grants`, icon: TrendingUp, color: "text-primary" },
+              { label: "Ending Soon", value: formatCurrency(expiringSoonValue), sub: `${activeFunding.filter(f => daysUntil(f.endDate) <= 90 && daysUntil(f.endDate) > 0).length} expiring`, icon: TrendingDown, color: "text-destructive" },
               { label: "Secured", value: `${securedPercentage}%`, sub: "3+ months remaining", icon: CheckCircle, color: "text-secondary" },
             ].map((s) => (
               <Card key={s.label} className="hover:shadow-md transition-shadow">

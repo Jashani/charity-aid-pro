@@ -11,24 +11,22 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { PoundSterling, Search, AlertTriangle, RefreshCw } from "lucide-react";
+import { PoundSterling, Search, AlertTriangle, RefreshCw, Loader2 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
-import {
-  mockActiveFunding,
-  formatCurrency,
-  daysUntil,
-} from "@/lib/mock-data";
+import { useActiveFunding } from "@/hooks/useActiveFunding";
+import { formatCurrency, daysUntil } from "@/lib/mock-data";
 
 const Funding = () => {
+  const { data: allActiveFunding = [], isLoading } = useActiveFunding();
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
 
-  const total = mockActiveFunding.reduce((s, f) => s + f.amount, 0);
-  const expiringSoon = mockActiveFunding.filter((f) => daysUntil(f.endDate) <= 90 && daysUntil(f.endDate) > 0);
-  const renewableCount = mockActiveFunding.filter((f) => f.renewalEligible).length;
+  const total = allActiveFunding.reduce((s, f) => s + f.amount, 0);
+  const expiringSoon = allActiveFunding.filter((f) => daysUntil(f.endDate) <= 90 && daysUntil(f.endDate) > 0);
+  const renewableCount = allActiveFunding.filter((f) => f.renewalEligible).length;
 
   const filtered = useMemo(() => {
-    let result = [...mockActiveFunding];
+    let result = [...allActiveFunding];
     if (searchTerm) {
       const t = searchTerm.toLowerCase();
       result = result.filter(
@@ -37,7 +35,7 @@ const Funding = () => {
     }
     if (typeFilter !== "all") result = result.filter((f) => f.type === typeFilter);
     return result;
-  }, [searchTerm, typeFilter]);
+  }, [allActiveFunding, searchTerm, typeFilter]);
 
   const getRowStyle = (daysLeft: number) => {
     if (daysLeft <= 30) return "bg-destructive/5 border-l-4 border-l-destructive";
@@ -53,6 +51,16 @@ const Funding = () => {
     return { text: `${months} months`, variant: "outline" as const };
   };
 
+  if (isLoading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-[60vh]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout>
       <div className="space-y-6 max-w-5xl">
@@ -64,7 +72,7 @@ const Funding = () => {
         {/* Summary */}
         <div className="grid gap-4 sm:grid-cols-3">
           {[
-            { label: "Total Active", value: formatCurrency(total), sub: `${mockActiveFunding.length} grants`, icon: PoundSterling, color: "text-primary" },
+            { label: "Total Active", value: formatCurrency(total), sub: `${allActiveFunding.length} grants`, icon: PoundSterling, color: "text-primary" },
             { label: "Expiring Soon", value: expiringSoon.length, sub: "Within 3 months", icon: AlertTriangle, color: "text-destructive" },
             { label: "Renewable", value: renewableCount, sub: "Can be renewed", icon: RefreshCw, color: "text-secondary" },
           ].map((s) => (

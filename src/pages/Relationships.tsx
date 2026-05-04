@@ -10,20 +10,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Search,
-  Star,
-  Mail,
-  Phone,
-  ExternalLink,
-  Users,
-  TrendingUp,
-  Calendar,
-  CheckCircle,
-  XCircle,
-  Clock,
+  Search, Star, Mail, Phone, ExternalLink, Users, TrendingUp, Calendar, CheckCircle, XCircle, Clock, Loader2,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { mockFunderContacts, formatCurrency, type FunderContact } from "@/lib/mock-data";
+import { useFunderContacts } from "@/hooks/useFunderContacts";
+import { formatCurrency, type FunderContact } from "@/lib/mock-data";
 
 // Mock interaction history per contact
 const mockHistory: Record<string, { date: string; type: string; note: string }[]> = {
@@ -63,23 +54,34 @@ const typeIcons: Record<string, React.ReactNode> = {
 };
 
 const Relationships = () => {
+  const { data: allContacts = [], isLoading } = useFunderContacts();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedContact, setSelectedContact] = useState<FunderContact | null>(null);
 
   const filtered = searchTerm
-    ? mockFunderContacts.filter(
+    ? allContacts.filter(
         (c) =>
           c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
           c.organisation.toLowerCase().includes(searchTerm.toLowerCase())
       )
-    : mockFunderContacts;
+    : allContacts;
 
   const sortedContacts = [...filtered].sort((a, b) => b.relationshipScore - a.relationshipScore);
 
-  const totalFunded = mockFunderContacts.reduce((s, c) => s + c.totalFunded, 0);
-  const avgSuccess = Math.round(
-    mockFunderContacts.reduce((s, c) => s + c.successRate, 0) / mockFunderContacts.length
-  );
+  const totalFunded = allContacts.reduce((s, c) => s + c.totalFunded, 0);
+  const avgSuccess = allContacts.length > 0 ? Math.round(
+    allContacts.reduce((s, c) => s + c.successRate, 0) / allContacts.length
+  ) : 0;
+
+  if (isLoading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-[60vh]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -91,7 +93,7 @@ const Relationships = () => {
 
         <div className="grid gap-4 sm:grid-cols-3">
           {[
-            { label: "Contacts", value: mockFunderContacts.length, icon: Users, color: "text-primary" },
+            { label: "Contacts", value: allContacts.length, icon: Users, color: "text-primary" },
             { label: "Total Funded", value: formatCurrency(totalFunded), icon: TrendingUp, color: "text-secondary" },
             { label: "Avg Success", value: `${avgSuccess}%`, icon: Star, color: "text-accent" },
           ].map((s) => (

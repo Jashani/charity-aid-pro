@@ -29,3 +29,8 @@ __pycache__/
 *.pyo
 *.pyd
 token_cache.bin
+
+# Environment variables
+.env.local
+.env
+result.json
