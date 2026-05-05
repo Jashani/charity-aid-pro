@@ -1,28 +1,36 @@
 # Charity Aid Pro
 
-A funding pipeline management tool for UK charities. It combines a React dashboard for tracking grant opportunities with an automated email parser that reads funding emails and extracts structured opportunity data using Azure OpenAI.
+A funding pipeline tool for UK charities. A React dashboard surfaces grant
+opportunities; a small Python pipeline pulls funding emails from a personal
+Outlook inbox, parses them with an LLM, scores each opportunity, and writes
+the results to Supabase.
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────┐     ┌──────────────────────────────────────┐
-│  Frontend (React SPA)           │     │  Email Parser (Azure Functions)       │
-│                                 │     │                                        │
-│  - Discover funding             │────▶│  GET /api/opportunities               │
-│  - Pipeline (Kanban)            │     │  POST /api/scan                       │
-│  - Active funding               │     │  GET /api/dead-letters                │
-│  - Reports & analytics          │     │  POST /api/dead-letters/{id}/retry    │
-│  - Relationships & contacts     │     │                                        │
-│  - Reminders                    │     │  Timer: polls mailbox every 15 min    │
-└─────────────────────────────────┘     └──────────────────────────────────────┘
-                                                        │
-                                         ┌──────────────┴──────────────┐
-                                         │                             │
-                                   Microsoft 365               Azure Cosmos DB
-                                   (Graph API)                 (free tier)
-                                   + Azure OpenAI
+┌────────────────────────────┐         ┌──────────────────────────────────────┐
+│  Frontend (React SPA)      │         │  Email pipeline (Python CLI)         │
+│                            │         │                                      │
+│  - Discover funding        │         │  python -m email_parsing.run         │
+│  - Pipeline (Kanban)       │◀────────│    fetch → parse → score → upsert    │
+│  - Active funding          │  reads  │                                      │
+│  - Reports & analytics     │         │  Runs daily on GitHub Actions cron   │
+│  - Relationships           │         │  (09:00 UTC). Manual dispatch ok.    │
+│  - Reminders               │         │                                      │
+└────────────────────────────┘         └──────────────────────────────────────┘
+            │                                          │
+            │ Supabase JS client                       │ Supabase Python client
+            ▼                                          ▼
+        ┌──────────────────────────────────────────────────┐
+        │            Supabase (Postgres + RLS)             │
+        │            table: opportunities                  │
+        └──────────────────────────────────────────────────┘
+
+Pipeline external services:
+  - Microsoft Graph (personal Outlook, MSAL device-code, Mail.ReadWrite)
+  - Groq (Llama 3.3 70B via OpenAI-compatible endpoint, free tier)
 ```
 
 ---
@@ -31,37 +39,38 @@ A funding pipeline management tool for UK charities. It combines a React dashboa
 
 ```
 charity-aid-pro/
-├── src/                        # React frontend
-│   ├── components/             # UI components (shadcn/ui)
-│   ├── pages/                  # Dashboard pages
-│   └── lib/mock-data.ts        # FundingOpportunity interface + mock data
-├── email_parsing/              # Azure Functions email parser (Python 3.11)
-│   ├── function_app.py         # All 5 Azure Functions
-│   ├── core/                   # Business logic modules
-│   ├── prompts/                # LLM prompt files (editable without code changes)
-│   ├── sample/                 # Real sample emails for testing
-│   ├── tests/                  # pytest unit + integration tests
-│   └── infra/                  # Azure Bicep IaC + deploy script
-└── .github/
-    └── copilot-instructions.md # GitHub Copilot context for this repo
+├── src/                              # React frontend
+│   ├── components/                   # UI components (shadcn/ui)
+│   ├── pages/                        # Dashboard pages
+│   └── lib/                          # FundingOpportunity types + helpers
+├── email_parsing/                    # Python pipeline (one CLI, no server)
+│   ├── run.py                        # CLI entry point
+│   ├── outlook.py                    # MSAL device-code + Graph fetch
+│   ├── llm.py                        # OpenAI-compatible client + parse()
+│   ├── scoring.py                    # gating + algorithmic + heuristic
+│   ├── storage.py                    # Supabase upsert
+│   ├── schema.py                     # Pydantic models
+│   ├── config.py                     # env vars
+│   ├── prompts/parse.txt             # single classify+extract prompt
+│   └── tests/
+├── supabase/migrations/              # opportunities table schema
+└── .github/workflows/
+    └── email-pipeline.yml            # daily cron job
 ```
 
 ---
 
 ## Frontend
 
-**Tech stack:** React 18, TypeScript, Vite, shadcn/ui, Tailwind CSS, TanStack Query, React Router v6, Zod, React Hook Form
+**Tech stack:** React 18, TypeScript, Vite, shadcn/ui, Tailwind CSS,
+TanStack Query, React Router v6, Zod, React Hook Form, Supabase JS client.
 
 ### Local development
 
 ```sh
-# Install dependencies
 npm install
-
-# Start dev server (http://localhost:8080)
-npm run dev
-
-# Run tests
+cp .env.example .env       # fill in VITE_SUPABASE_URL + VITE_SUPABASE_PUBLISHABLE_KEY
+npm run dev                # http://localhost:8080
 npm test
 ```
 
@@ -71,7 +80,7 @@ npm test
 |---|---|
 | Dashboard | Summary metrics and recent activity |
 | Discover | Browse and search funding opportunities |
-| Pipeline | Kanban board — track applications from identified to awarded |
+| Pipeline | Kanban — track applications from identified to awarded |
 | Funding | Active grants and renewal tracking |
 | Reports | Analytics and charts |
 | Relationships | Funder contacts and communication history |
@@ -79,173 +88,157 @@ npm test
 
 ---
 
-## Email Parser
+## Email pipeline
 
-Automatically reads a Microsoft 365 mailbox every 15 minutes, classifies emails (funding opportunity / newsletter / irrelevant), extracts structured opportunity data using Azure OpenAI, and stores results in Cosmos DB.
+The pipeline is a single Python CLI script. It runs on a daily GitHub
+Actions cron — there is no Azure Functions runtime, no FastAPI server, no
+Cosmos DB.
 
-**Tech stack:** Python 3.11, Azure Functions v2, Microsoft Graph API, Azure OpenAI (GPT-4o-mini + GPT-4o fallback), Azure Cosmos DB (NoSQL free tier), Pydantic v2, httpx, MarkItDown
-
-**Estimated annual cost: ~$18** (within Azure for Nonprofits $2,000/year credits)
+**Tech stack:** Python 3.11, Microsoft Graph (personal Outlook via MSAL
+device-code, scope `Mail.ReadWrite`), Groq + Llama 3.3 70B over the OpenAI-
+compatible endpoint, Supabase, Pydantic v2, httpx, MarkItDown.
 
 ### How it works
 
-1. **Fetch** — Graph API retrieves unread emails (up to 25 per poll)
-2. **Dedup** — skips emails already in Cosmos DB
-3. **Classify** — GPT-4o-mini labels each email: `FUNDING_OPPORTUNITY`, `NEWSLETTER`, or `IRRELEVANT`
-4. **Extract** — GPT-4o-mini pulls structured fields from relevant emails; auto-escalates to GPT-4o if confidence falls below `CONFIDENCE_THRESHOLD` (default 0.7, configurable)
-5. **Validate** — Pydantic schema enforces the `FundingOpportunity` contract
-6. **Store** — upserted to Cosmos DB
-7. **Mark read** — email marked as read in mailbox; failures moved to `ParseFailed` folder
+For each run:
 
-### API endpoints
+1. **Fetch** — Microsoft Graph returns the most recent inbox messages.
+   With `--unread-only` (the cron default), `$filter=isRead eq false`
+   restricts the query to messages we haven't processed yet.
+2. **Parse** — one LLM call per email returns
+   `{classification, confidence, opportunities[]}`. Newsletter / irrelevant
+   emails come back with an empty list.
+3. **Score** — each opportunity goes through gating (extraction confidence,
+   geography with LLM + keyword fallback, eligibility heuristic),
+   algorithmic scoring (funding band, days-to-deadline, geography
+   modifier), and a weighted composite score (0–100). Suggested tags are
+   added: `Quick Win`, `Multi-Year`, `Strong Match`, `High Value`.
+4. **Store** — opportunities are upserted to the `opportunities` table on
+   the deterministic id `{emailId}#{idx}`, so reruns are idempotent.
+5. **Mark read** — only after both LLM and storage succeed. If anything
+   earlier fails, the email stays unread and the next run retries it.
 
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| `GET` | `/api/opportunities` | None | All parsed opportunities (filterable by `type`, `status`, `funderName`) |
-| `POST` | `/api/scan` | Function key | Manually trigger a mailbox poll |
-| `GET` | `/api/dead-letters` | Function key | List failed emails awaiting manual review |
-| `POST` | `/api/dead-letters/{email_id}/retry` | Function key | Reprocess a specific failed email |
-
-### Failed email handling
-
-Emails that fail parsing are:
-- Stored in the Cosmos DB `dead-letters` container with the error message, retry count, and original email data
-- Moved to a `ParseFailed` folder in the mailbox
-
-Use `GET /api/dead-letters` to list them and `POST /api/dead-letters/{email_id}/retry` to reprocess. On successful retry, the entry is marked resolved and the opportunity is stored normally.
-
-### Local development
-
-Prerequisites:
-- Python 3.11
-- [Azure Functions Core Tools](https://learn.microsoft.com/en-us/azure/azure-functions/functions-run-local) (`npm install -g azure-functions-core-tools@4`)
+### Local runs
 
 ```sh
-cd email_parsing
+# One-time: register a Microsoft Entra app (any-org-or-personal account
+# type, Mail.ReadWrite delegated permission, public client flow enabled),
+# then authenticate from the repo root:
+python -m email_parsing.outlook auth
 
-# Create and activate a virtual environment
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+# Set credentials and run:
+export LLM_API_KEY=<groq key>            # gsk_...
+export SUPABASE_URL=https://<project>.supabase.co
+export SUPABASE_KEY=<service-role key>
 
-# Install dependencies
-pip install -r requirements.txt
+python -m email_parsing.run --count 10                    # full pipeline
+python -m email_parsing.run --count 5 --no-store --output /tmp/parsed.json
+```
 
-# Copy and fill in environment variables
-cp local.settings.json.example local.settings.json
-# Edit local.settings.json with your Azure credentials
+CLI flags: `--count N`, `--unread-only`, `--mark-read`, `--no-store`,
+`--no-score`, `--output PATH`. Locally, `--unread-only` and `--mark-read`
+are off by default so you can re-test without changing inbox state. The
+cron run sets both.
 
-# Run locally
-func start
+Tests:
 
-# Run tests
-pytest tests/
+```sh
+pip install -r email_parsing/requirements.txt pytest
+pytest email_parsing/tests
 ```
 
 ### Configuration
 
-All settings are read from environment variables. Copy `local.settings.json.example` to `local.settings.json` for local dev (gitignored — never commit secrets).
+Pipeline settings come from environment variables ([config.py](email_parsing/config.py)):
 
-| Variable | Description |
+| Variable | Required | Default | Notes |
+|---|---|---|---|
+| `LLM_API_KEY` | yes | — | Groq, OpenAI, Gemini OpenAI-compat, OpenRouter, Azure |
+| `LLM_BASE_URL` | no | `https://api.groq.com/openai/v1` | OpenAI-compatible base URL |
+| `LLM_MODEL` | no | `llama-3.3-70b-versatile` | |
+| `LLM_TIMEOUT_SECONDS` | no | `60` | |
+| `MSAL_CLIENT_ID` | no | (registered Entra app) | only override if you re-register |
+| `MSAL_CACHE_FILE` | no | `<repo>/token_cache.bin` | local token cache |
+| `MSAL_TOKEN_CACHE_B64` | CI only | — | base64-encoded cache (overrides the file) |
+| `SUPABASE_URL` | for storage | — | |
+| `SUPABASE_KEY` | for storage | — | service-role key |
+
+The OpenAI client uses `max_retries=6` and honors the `Retry-After` header,
+so a single run absorbs Groq TPM-window resets without bubbling failures.
+
+### GitHub Actions
+
+`.github/workflows/email-pipeline.yml` runs **daily at 09:00 UTC** and on
+manual dispatch. A `concurrency` lock prevents two runs from racing on the
+mailbox. The cron uses `--unread-only --mark-read`, so each day picks up
+only what's actually new.
+
+**Settings → Secrets and variables → Actions**
+
+Secrets (required):
+
+| Name | Value |
 |---|---|
-| `GRAPH_TENANT_ID` | Azure AD tenant ID |
-| `GRAPH_CLIENT_ID` | App registration client ID |
-| `GRAPH_CLIENT_SECRET` | App registration secret (Key Vault in production) |
-| `GRAPH_USER_EMAIL` | Mailbox address to poll |
-| `AZURE_OPENAI_ENDPOINT` | Azure OpenAI service URL |
-| `AZURE_OPENAI_KEY` | Azure OpenAI key (Key Vault in production) |
-| `AZURE_OPENAI_DEPLOYMENT` | Primary model deployment name (default: `gpt-4o-mini`) |
-| `AZURE_OPENAI_DEPLOYMENT_FULL` | Fallback model deployment name (default: `gpt-4o`) |
-| `CONFIDENCE_THRESHOLD` | Score below which parser escalates to fallback model (default: `0.7`) |
-| `COSMOS_ENDPOINT` | Cosmos DB account URL |
-| `COSMOS_KEY` | Cosmos DB key (Key Vault in production) |
-| `COSMOS_DATABASE` | Database name (default: `email-parser`) |
-| `COSMOS_CONTAINER` | Container name (default: `opportunities`) |
+| `LLM_API_KEY` | Groq API key (`gsk_…`) |
+| `MSAL_TOKEN_CACHE_B64` | output of `python -m email_parsing.outlook export-cache` after running `outlook auth` locally |
+| `SUPABASE_URL` | `https://<project>.supabase.co` |
+| `SUPABASE_KEY` | Supabase service-role key |
 
-### Deployment
+Variables (optional — only set to override defaults):
 
-Prerequisites: Azure CLI, Azure Functions Core Tools, `jq`
+| Name | Default |
+|---|---|
+| `LLM_BASE_URL` | `https://api.groq.com/openai/v1` |
+| `LLM_MODEL` | `llama-3.3-70b-versatile` |
+| `MSAL_CLIENT_ID` | the registered Entra app id |
 
-```sh
-# Log in to Azure
-az login
+To rotate the Outlook auth, run `outlook auth` again locally and re-export
+the cache to `MSAL_TOKEN_CACHE_B64`.
 
-# Deploy infrastructure + publish function code
-cd email_parsing/infra
-chmod +x deploy.sh
-./deploy.sh --resource-group charity-email-parser-rg --location uksouth
-```
+### Tuning the prompt
 
-The script provisions all Azure resources via Bicep and prints the exact commands to set secrets in Key Vault after deployment.
-
-**Azure prerequisites (one-time, requires admin):**
-1. Create an Azure AD App Registration with `Mail.Read` application permission on Microsoft Graph
-2. Grant admin consent for the permission
-3. Create a client secret and add it to Key Vault post-deployment
-
-### Tuning the prompts
-
-The LLM prompts are in `email_parsing/prompts/` as plain text files. Edit them directly to improve extraction accuracy — no code changes needed. Add sample emails to `email_parsing/sample/` and run the integration tests to validate changes.
-
-### Switching models
-
-If a model family is retired entirely, update `email_parsing/infra/parameters.json` and redeploy — no code changes needed:
-
-```json
-"openAiModelPrimary": { "value": "<new-model-name>" },
-"openAiModelPrimaryVersion": { "value": "<new-version>" }
-```
-
-```sh
-./deploy.sh
-```
-
-Within the same model family, `versionUpgradeOption: OnceCurrentVersionExpired` in the Bicep handles version bumps automatically.
+The single LLM prompt is `email_parsing/prompts/parse.txt` — edit and
+commit, no code changes needed. Pydantic validation enforces the schema
+on the way back, so malformed opportunities are dropped with a warning
+rather than blowing up the run.
 
 ---
 
 ## Data schema
 
-### ParsedEmail
-
-The top-level document stored in Cosmos DB for every processed email. Contains email metadata and a list of extracted opportunities.
-
-| Field | Type | Description |
-|---|---|---|
-| `emailId` | `string` | Graph API message ID — used as the Cosmos document `id` |
-| `emailSubject` | `string` | Email subject line |
-| `emailFrom` | `string` | Sender address |
-| `emailReceivedAt` | `datetime` | When the email arrived (UTC) |
-| `parsedAt` | `datetime` | When the pipeline processed it (UTC) |
-| `modelUsed` | `string` | OpenAI deployment name used for final extraction |
-| `classification` | `"FUNDING_OPPORTUNITY" \| "NEWSLETTER" \| "IRRELEVANT"` | Email classification |
-| `classificationConfidence` | `float` (0–1) | Model confidence in the classification |
-| `opportunities` | `FundingOpportunity[]` | Extracted opportunities (empty for irrelevant emails) |
+The Supabase `opportunities` table is defined in
+[supabase/migrations/](supabase/migrations). Pydantic mirror in
+[email_parsing/schema.py](email_parsing/schema.py); TypeScript source of
+truth in [src/lib/](src/lib).
 
 ### FundingOpportunity
 
-The shared contract between the email parser and the frontend. TypeScript source of truth: `src/lib/mock-data.ts`. Python mirror: `email_parsing/core/schema.py`.
+Shared contract between the pipeline and the frontend.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `id` | `string` | — | Unique identifier (generated slug) |
-| `funderName` | `string` | — | Name of the funding organisation |
-| `programName` | `string` | — | Name of the specific grant programme |
-| `amount` | `number` | — | Minimum award amount (GBP) |
-| `amountMax` | `number \| null` | `null` | Maximum award amount if a range is given |
-| `type` | `"grant" \| "trust" \| "lottery" \| "corporate" \| "government"` | — | Category of funder |
-| `deadline` | `string` | — | Application deadline (ISO 8601 or `"unknown"`) |
-| `location` | `string` | — | Geographic eligibility area |
-| `duration` | `"single-year" \| "multi-year"` | — | Grant duration |
-| `durationMonths` | `number` | — | Duration in months |
-| `relationship` | `"new" \| "previously-applied" \| "existing-funder" \| "re-eligible"` | `"new"` | Charity's relationship with this funder |
+| `id` | `string` | — | Deterministic `{emailId}#{idx}` |
+| `funderName` | `string` | — | Funding organisation |
+| `programName` | `string` | — | Specific grant programme |
+| `amount` | `number` | — | Minimum award (GBP) |
+| `amountMax` | `number \| null` | `null` | Max award if a range is given |
+| `type` | `"grant" \| "trust" \| "lottery" \| "corporate" \| "government"` | — | |
+| `deadline` | `string` | — | ISO 8601 date or `"unknown"` |
+| `location` | `string` | — | Geographic eligibility |
+| `duration` | `"single-year" \| "multi-year"` | — | |
+| `durationMonths` | `number` | `12` | |
 | `status` | `"identified" \| "researching" \| "applying" \| "submitted" \| "awarded" \| "rejected"` | `"identified"` | Pipeline stage |
-| `score` | `number` (0–100) | `0` | Relevance/fit score (set manually or by a scoring step) |
-| `tags` | `string[]` | `[]` | e.g. `"Quick Win"`, `"Multi-Year"`, `"Capital Cost"` |
-| `description` | `string` | — | 2–3 sentence summary of the fund |
-| `eligibility` | `string` | — | Key eligibility criteria |
-| `notes` | `string` | `""` | Additional notes |
-| `website` | `string` | — | Application or information URL |
-| `contactName` | `string \| null` | `null` | Contact person's name |
-| `contactEmail` | `string \| null` | `null` | Contact person's email |
-| `source` | `string` | — | Origin, e.g. `"email:AAMkAG..."` |
-| `extractionConfidence` | `float` (0–1) | `0` | LLM confidence in extracted data |
+| `score` | `number` (0–100) | `0` | Mirrors `final_score` after scoring |
+| `tags` | `string[]` | `[]` | LLM-suggested + scoring-suggested tags |
+| `description` | `string` | `""` | 2–3 sentence summary |
+| `eligibility` | `string` | `""` | Key criteria |
+| `notes` | `string` | `""` | Free-form |
+| `website` | `string` | `""` | URL |
+| `contactName` | `string \| null` | `null` | |
+| `contactEmail` | `string \| null` | `null` | |
+| `source` | `string` | `""` | e.g. `"email:AAMkAG..."` |
+| `extractionConfidence` | `float` (0–1) | `0` | LLM confidence |
+
+After scoring, opportunities also carry `gating`, `scores`, `timing`,
+`final_score`, `suggested_tags`, and `scored_at`. See
+[email_parsing/README.md](email_parsing/README.md) for the scoring detail.
