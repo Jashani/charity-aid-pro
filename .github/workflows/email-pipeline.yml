@@ -1,0 +1,80 @@
+name: Email parsing pipeline
+
+on:
+  schedule:
+    # 09:00 UTC daily. Cron is always UTC — that's 09:00 GMT / 10:00 BST.
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+    inputs:
+      count:
+        description: "Number of recent emails to fetch"
+        default: "25"
+        required: false
+      unread_only:
+        description: "Only fetch unread emails"
+        type: boolean
+        default: true
+      mark_read:
+        description: "Mark processed emails as read"
+        type: boolean
+        default: true
+
+# Don't run two pipeline jobs at once — they'd race on the same mailbox.
+concurrency:
+  group: email-pipeline
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: email_parsing/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r email_parsing/requirements.txt
+
+      - name: Run pipeline
+        env:
+          # Required secrets
+          LLM_API_KEY:          ${{ secrets.LLM_API_KEY }}
+          MSAL_TOKEN_CACHE_B64: ${{ secrets.MSAL_TOKEN_CACHE_B64 }}
+          SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY:         ${{ secrets.SUPABASE_KEY }}
+          # Optional vars — leave unset to use the defaults baked into config.py
+          # (Groq + llama-3.3-70b-versatile, the registered Entra app id).
+          LLM_BASE_URL:   ${{ vars.LLM_BASE_URL }}
+          LLM_MODEL:      ${{ vars.LLM_MODEL }}
+          MSAL_CLIENT_ID: ${{ vars.MSAL_CLIENT_ID }}
+        run: |
+          # On scheduled runs (no inputs), default to unread-only + mark-read so
+          # each cron picks up only what's actually new and won't reprocess
+          # tomorrow. Manual dispatch can override either flag via the UI.
+          UNREAD_FLAG="--unread-only"
+          MARK_FLAG="--mark-read"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            [ "${{ github.event.inputs.unread_only }}" = "true" ] || UNREAD_FLAG=""
+            [ "${{ github.event.inputs.mark_read }}"  = "true" ] || MARK_FLAG=""
+          fi
+          python -m email_parsing.run \
+            --count ${{ github.event.inputs.count || '25' }} \
+            $UNREAD_FLAG \
+            $MARK_FLAG \
+            --output artifacts/parsed.json
+
+      - name: Upload parsed payload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parsed-emails
+          path: artifacts/parsed.json
+          if-no-files-found: ignore
+          retention-days: 14
