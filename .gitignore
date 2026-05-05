@@ -34,3 +34,5 @@ token_cache.bin
 .env.local
 .env
 result.json
+
+.mcp.json
