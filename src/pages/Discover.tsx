@@ -16,7 +16,6 @@ import {
   SlidersHorizontal,
   Clock,
   ArrowUpDown,
-  ExternalLink,
   Zap,
   Globe,
   FileText,
@@ -47,9 +46,7 @@ const Discover = () => {
   );
 
   const filtered = useMemo(() => {
-    let result = allOpportunities.filter(
-      (o) => o.status !== "awarded" && o.status !== "rejected"
-    );
+    let result = allOpportunities.filter((o) => o.status === "identified");
 
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
@@ -297,7 +294,7 @@ function OpportunityCard({
   onDetails: () => void;
 }) {
   return (
-    <Card className="hover:shadow-md transition-shadow rounded-xl">
+    <Card className="hover:shadow-md transition-shadow rounded-xl cursor-pointer" onClick={onDetails}>
       <CardContent className="p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0 space-y-2">
@@ -334,10 +331,7 @@ function OpportunityCard({
               <Clock className="h-3 w-3" />
               {daysUntil(opp.deadline)}d left
             </div>
-            <Button variant="ghost" size="sm" className="mt-1 h-7 text-xs gap-1" onClick={onDetails}>
-              <ExternalLink className="h-3 w-3" /> Details
-            </Button>
-          </div>
+            </div>
         </div>
       </CardContent>
     </Card>

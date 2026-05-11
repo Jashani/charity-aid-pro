@@ -1,18 +1,28 @@
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { PoundSterling, Clock, Search, AlertTriangle, ArrowRight, TrendingUp, Sparkles, Loader2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { PoundSterling, Clock, Search, AlertTriangle, ArrowRight, TrendingUp, Sparkles, Loader2, Globe, FileText, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useOpportunities } from "@/hooks/useOpportunities";
 import { useActiveFunding } from "@/hooks/useActiveFunding";
-import { formatCurrency, daysUntil, getFundingProgress } from "@/lib/mock-data";
+import { formatCurrency, daysUntil, getFundingProgress, type FundingOpportunity, type ActiveFunding } from "@/lib/mock-data";
 
 const Index = () => {
   const { data: opportunities = [], isLoading: loadingOpps } = useOpportunities();
   const { data: activeFunding = [], isLoading: loadingFunding } = useActiveFunding();
   const isLoading = loadingOpps || loadingFunding;
+
+  const [selectedOpp, setSelectedOpp] = useState<FundingOpportunity | null>(null);
+  const [selectedFund, setSelectedFund] = useState<ActiveFunding | null>(null);
 
   const totalActive = activeFunding.reduce((sum, f) => sum + f.amount, 0);
   const upcomingDeadlines = opportunities.filter(
@@ -108,7 +118,11 @@ const Index = () => {
             </div>
             <div className="space-y-2">
               {opportunities.filter((o) => o.status === "identified").sort((a, b) => b.score - a.score).slice(0, 4).map((opp) => (
-                <div key={opp.id} className="flex items-center justify-between rounded-xl border p-3.5 hover:bg-muted/30 transition-colors">
+                <div
+                  key={opp.id}
+                  onClick={() => setSelectedOpp(opp)}
+                  className="flex items-center justify-between rounded-xl border p-3.5 hover:bg-muted/30 transition-colors cursor-pointer"
+                >
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium truncate">{opp.funderName}</p>
                     <p className="text-xs text-muted-foreground truncate">{opp.programName}</p>
@@ -133,7 +147,11 @@ const Index = () => {
               const progress = getFundingProgress(fund.startDate, fund.endDate);
               const remaining = daysUntil(fund.endDate);
               return (
-                <div key={fund.id} className="rounded-xl border p-4 space-y-2.5">
+                <div
+                  key={fund.id}
+                  onClick={() => setSelectedFund(fund)}
+                  className="rounded-xl border p-4 space-y-2.5 hover:bg-muted/30 transition-colors cursor-pointer"
+                >
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium">{fund.funderName}</p>
@@ -151,6 +169,110 @@ const Index = () => {
           </div>
         </div>
       </div>
+
+      {/* Opportunity detail dialog */}
+      <Dialog open={!!selectedOpp} onOpenChange={() => setSelectedOpp(null)}>
+        <DialogContent className="rounded-xl max-w-lg">
+          {selectedOpp && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-xl">{selectedOpp.funderName}</DialogTitle>
+                <p className="text-sm text-muted-foreground">{selectedOpp.programName}</p>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <p className="text-sm text-muted-foreground">{selectedOpp.description}</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-xl bg-muted/50 p-3">
+                    <p className="text-xs text-muted-foreground">Amount</p>
+                    <p className="text-sm font-bold">
+                      {formatCurrency(selectedOpp.amount)}
+                      {selectedOpp.amountMax && selectedOpp.amountMax !== selectedOpp.amount && ` – ${formatCurrency(selectedOpp.amountMax)}`}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-muted/50 p-3">
+                    <p className="text-xs text-muted-foreground">Deadline</p>
+                    <p className="text-sm font-bold">{new Date(selectedOpp.deadline).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
+                  </div>
+                  <div className="rounded-xl bg-muted/50 p-3">
+                    <p className="text-xs text-muted-foreground">Duration</p>
+                    <p className="text-sm font-bold">{selectedOpp.durationMonths} months</p>
+                  </div>
+                  <div className="rounded-xl bg-muted/50 p-3">
+                    <p className="text-xs text-muted-foreground">Location</p>
+                    <p className="text-sm font-bold">{selectedOpp.location}</p>
+                  </div>
+                </div>
+                {selectedOpp.eligibility && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1"><Users className="h-3 w-3" /> Eligibility</p>
+                    <p className="text-sm">{selectedOpp.eligibility}</p>
+                  </div>
+                )}
+                {selectedOpp.notes && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1"><FileText className="h-3 w-3" /> Notes</p>
+                    <p className="text-sm">{selectedOpp.notes}</p>
+                  </div>
+                )}
+                {selectedOpp.contactName && (
+                  <div className="rounded-xl border p-3">
+                    <p className="text-xs text-muted-foreground mb-1">Contact</p>
+                    <p className="text-sm font-medium">{selectedOpp.contactName}</p>
+                    {selectedOpp.contactEmail && <p className="text-xs text-muted-foreground">{selectedOpp.contactEmail}</p>}
+                  </div>
+                )}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge variant="outline" className="rounded-full text-xs">{selectedOpp.type}</Badge>
+                  {selectedOpp.tags.map((tag) => (
+                    <Badge key={tag} variant="outline" className="rounded-full text-xs">{tag}</Badge>
+                  ))}
+                </div>
+                {selectedOpp.website && (
+                  <Button variant="outline" className="w-full rounded-xl gap-2" onClick={() => window.open(selectedOpp.website, "_blank")}>
+                    <Globe className="h-4 w-4" /> Visit Funder Website
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Active funding detail dialog */}
+      <Dialog open={!!selectedFund} onOpenChange={() => setSelectedFund(null)}>
+        <DialogContent className="rounded-xl max-w-lg">
+          {selectedFund && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-xl">{selectedFund.funderName}</DialogTitle>
+                <p className="text-sm text-muted-foreground">{selectedFund.programName}</p>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-xl bg-muted/50 p-3">
+                    <p className="text-xs text-muted-foreground">Amount</p>
+                    <p className="text-sm font-bold">{formatCurrency(selectedFund.amount)}</p>
+                  </div>
+                  <div className="rounded-xl bg-muted/50 p-3">
+                    <p className="text-xs text-muted-foreground">End Date</p>
+                    <p className="text-sm font-bold">{new Date(selectedFund.endDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
+                  </div>
+                </div>
+                {selectedFund.notes && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1"><FileText className="h-3 w-3" /> Notes</p>
+                    <p className="text-sm">{selectedFund.notes}</p>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge variant="outline" className="rounded-full text-xs">{selectedFund.type}</Badge>
+                  {selectedFund.renewalEligible && <Badge variant="secondary" className="rounded-full text-xs">Renewable</Badge>}
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 };

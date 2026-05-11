@@ -25,6 +25,7 @@ async function fetchActiveFunding(): Promise<ActiveFunding[]> {
   const { data, error } = await supabase
     .from('opportunities')
     .select('*')
+    .eq('status', 'awarded')
     .order('deadline', { ascending: true });
 
   if (error) {

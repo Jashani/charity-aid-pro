@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
@@ -18,6 +20,7 @@ import { GripVertical, Plus, ChevronDown, ChevronUp, Loader2 } from "lucide-reac
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { toast } from "sonner";
 import { useOpportunities } from "@/hooks/useOpportunities";
+import { supabase } from "@/lib/supabaseClient";
 import {
   formatCurrency,
   daysUntil,
@@ -34,7 +37,25 @@ const columns: { id: OpportunityStatus; label: string; color: string }[] = [
   { id: "rejected", label: "Rejected", color: "bg-destructive" },
 ];
 
+const emptyForm = {
+  funderName: "",
+  programName: "",
+  amount: "",
+  amountMax: "",
+  type: "trust" as FundingOpportunity["type"],
+  deadline: "",
+  location: "UK-wide",
+  durationMonths: "12",
+  description: "",
+  eligibility: "",
+  website: "",
+  contactName: "",
+  contactEmail: "",
+  notes: "",
+};
+
 const Pipeline = () => {
+  const queryClient = useQueryClient();
   const { data: fetchedOpportunities = [], isLoading } = useOpportunities();
   const [opportunities, setOpportunities] = useState<FundingOpportunity[]>([]);
   const [hasInitialized, setHasInitialized] = useState(false);
@@ -42,23 +63,36 @@ const Pipeline = () => {
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
   const [collapsedCols, setCollapsedCols] = useState<Set<string>>(new Set());
   const [showAddDialog, setShowAddDialog] = useState(false);
-  const [newOpp, setNewOpp] = useState({
-    funderName: "",
-    programName: "",
-    amount: "",
-    deadline: "",
-    type: "trust" as FundingOpportunity["type"],
-  });
+  const [submitting, setSubmitting] = useState(false);
+  const [newOpp, setNewOpp] = useState(emptyForm);
 
   const handleDragStart = (id: string) => setDraggedId(id);
 
-  const handleDrop = (targetStatus: OpportunityStatus) => {
+  const handleDrop = async (targetStatus: OpportunityStatus) => {
     if (!draggedId) return;
+    const movedId = draggedId;
+    const prevStatus = opportunities.find((o) => o.id === movedId)?.status;
     setOpportunities((prev) =>
-      prev.map((o) => (o.id === draggedId ? { ...o, status: targetStatus } : o))
+      prev.map((o) => (o.id === movedId ? { ...o, status: targetStatus } : o))
     );
     setDraggedId(null);
     setDragOverCol(null);
+
+    if (!supabase || prevStatus === targetStatus) return;
+    const { error } = await supabase
+      .from("opportunities")
+      .update({ status: targetStatus, updated_at: new Date().toISOString() })
+      .eq("id", movedId);
+
+    if (error) {
+      toast.error(`Failed to update status: ${error.message}`);
+      setOpportunities((prev) =>
+        prev.map((o) => (o.id === movedId && prevStatus ? { ...o, status: prevStatus } : o))
+      );
+      return;
+    }
+    queryClient.invalidateQueries({ queryKey: ["opportunities"] });
+    queryClient.invalidateQueries({ queryKey: ["activeFunding"] });
   };
 
   const toggleCollapse = (colId: string) => {
@@ -72,31 +106,84 @@ const Pipeline = () => {
   const totalValue = (items: FundingOpportunity[]) =>
     items.reduce((s, o) => s + o.amount, 0);
 
-  const handleAddOpportunity = () => {
-    if (!newOpp.funderName || !newOpp.programName || !newOpp.amount || !newOpp.deadline) {
-      toast.error("Please fill in all fields");
+  const handleAddOpportunity = async () => {
+    if (
+      !newOpp.funderName ||
+      !newOpp.programName ||
+      !newOpp.amount ||
+      !newOpp.deadline ||
+      !newOpp.location ||
+      !newOpp.durationMonths ||
+      !newOpp.description ||
+      !newOpp.eligibility ||
+      !newOpp.website
+    ) {
+      toast.error("Please fill in all required fields");
       return;
     }
-    const opp: FundingOpportunity = {
-      id: `custom-${Date.now()}`,
-      funderName: newOpp.funderName,
-      programName: newOpp.programName,
-      amount: parseInt(newOpp.amount),
+    if (!supabase) {
+      toast.error("Supabase not configured");
+      return;
+    }
+
+    const id = `custom-${Date.now()}`;
+    const row = {
+      id,
+      funder_name: newOpp.funderName,
+      program_name: newOpp.programName,
+      amount: parseFloat(newOpp.amount),
+      amount_max: newOpp.amountMax ? parseFloat(newOpp.amountMax) : null,
       type: newOpp.type,
       deadline: newOpp.deadline,
-      location: "UK-wide",
-      durationMonths: 12,
-      status: "identified",
-      score: 50,
-      tags: [],
-      description: "",
-      eligibility: "",
-      notes: "",
-      website: "",
+      location: newOpp.location,
+      duration_months: parseInt(newOpp.durationMonths, 10),
+      status: "identified" as OpportunityStatus,
+      description: newOpp.description,
+      eligibility: newOpp.eligibility,
+      website: newOpp.website,
+      contact_name: newOpp.contactName || null,
+      contact_email: newOpp.contactEmail || null,
+      notes: newOpp.notes,
     };
+
+    setSubmitting(true);
+    const { data, error } = await supabase
+      .from("opportunities")
+      .insert(row)
+      .select()
+      .single();
+    setSubmitting(false);
+
+    if (error) {
+      toast.error(`Failed to add: ${error.message}`);
+      return;
+    }
+
+    const opp: FundingOpportunity = {
+      id: String(data.id),
+      funderName: data.funder_name,
+      programName: data.program_name,
+      amount: Number(data.amount),
+      amountMax: data.amount_max != null ? Number(data.amount_max) : undefined,
+      type: data.type,
+      deadline: data.deadline,
+      location: data.location,
+      durationMonths: Number(data.duration_months),
+      status: data.status,
+      score: Number(data.final_score ?? data.score ?? 0),
+      tags: Array.isArray(data.tags) ? data.tags : [],
+      description: data.description ?? "",
+      eligibility: data.eligibility ?? "",
+      notes: data.notes ?? "",
+      website: data.website ?? "",
+      contactName: data.contact_name ?? undefined,
+      contactEmail: data.contact_email ?? undefined,
+    };
+
     setOpportunities((prev) => [...prev, opp]);
+    queryClient.invalidateQueries({ queryKey: ["opportunities"] });
     setShowAddDialog(false);
-    setNewOpp({ funderName: "", programName: "", amount: "", deadline: "", type: "trust" });
+    setNewOpp(emptyForm);
     toast.success(`"${opp.funderName}" added to pipeline`);
   };
 
@@ -250,33 +337,36 @@ const Pipeline = () => {
 
       {/* Add Opportunity Dialog */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-        <DialogContent className="rounded-xl">
+        <DialogContent className="rounded-xl max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add Opportunity</DialogTitle>
             <DialogDescription>Add a new funding opportunity to your pipeline.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label>Funder Name</Label>
-              <Input
-                placeholder="e.g. Arts Council England"
-                value={newOpp.funderName}
-                onChange={(e) => setNewOpp((p) => ({ ...p, funderName: e.target.value }))}
-                className="rounded-xl"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Programme Name</Label>
-              <Input
-                placeholder="e.g. Project Grants"
-                value={newOpp.programName}
-                onChange={(e) => setNewOpp((p) => ({ ...p, programName: e.target.value }))}
-                className="rounded-xl"
-              />
-            </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Amount (£)</Label>
+                <Label>Funder Name *</Label>
+                <Input
+                  placeholder="e.g. Arts Council England"
+                  value={newOpp.funderName}
+                  onChange={(e) => setNewOpp((p) => ({ ...p, funderName: e.target.value }))}
+                  className="rounded-xl"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Programme Name *</Label>
+                <Input
+                  placeholder="e.g. Project Grants"
+                  value={newOpp.programName}
+                  onChange={(e) => setNewOpp((p) => ({ ...p, programName: e.target.value }))}
+                  className="rounded-xl"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Amount (£) *</Label>
                 <Input
                   type="number"
                   placeholder="10000"
@@ -286,7 +376,20 @@ const Pipeline = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Deadline</Label>
+                <Label>Amount Max (£)</Label>
+                <Input
+                  type="number"
+                  placeholder="optional"
+                  value={newOpp.amountMax}
+                  onChange={(e) => setNewOpp((p) => ({ ...p, amountMax: e.target.value }))}
+                  className="rounded-xl"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Deadline *</Label>
                 <Input
                   type="date"
                   value={newOpp.deadline}
@@ -294,24 +397,113 @@ const Pipeline = () => {
                   className="rounded-xl"
                 />
               </div>
+              <div className="space-y-2">
+                <Label>Type *</Label>
+                <Select value={newOpp.type} onValueChange={(v) => setNewOpp((p) => ({ ...p, type: v as FundingOpportunity["type"] }))}>
+                  <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="trust">Trust</SelectItem>
+                    <SelectItem value="lottery">Lottery</SelectItem>
+                    <SelectItem value="government">Government</SelectItem>
+                    <SelectItem value="corporate">Corporate</SelectItem>
+                    <SelectItem value="grant">Grant</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Location *</Label>
+                <Input
+                  placeholder="e.g. UK-wide"
+                  value={newOpp.location}
+                  onChange={(e) => setNewOpp((p) => ({ ...p, location: e.target.value }))}
+                  className="rounded-xl"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Duration (months) *</Label>
+                <Input
+                  type="number"
+                  placeholder="12"
+                  value={newOpp.durationMonths}
+                  onChange={(e) => setNewOpp((p) => ({ ...p, durationMonths: e.target.value }))}
+                  className="rounded-xl"
+                />
+              </div>
+            </div>
+
             <div className="space-y-2">
-              <Label>Type</Label>
-              <Select value={newOpp.type} onValueChange={(v) => setNewOpp((p) => ({ ...p, type: v as any }))}>
-                <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="trust">Trust</SelectItem>
-                  <SelectItem value="lottery">Lottery</SelectItem>
-                  <SelectItem value="government">Government</SelectItem>
-                  <SelectItem value="corporate">Corporate</SelectItem>
-                  <SelectItem value="grant">Grant</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label>Website *</Label>
+              <Input
+                placeholder="https://..."
+                value={newOpp.website}
+                onChange={(e) => setNewOpp((p) => ({ ...p, website: e.target.value }))}
+                className="rounded-xl"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Contact Name</Label>
+                <Input
+                  placeholder="optional"
+                  value={newOpp.contactName}
+                  onChange={(e) => setNewOpp((p) => ({ ...p, contactName: e.target.value }))}
+                  className="rounded-xl"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Contact Email</Label>
+                <Input
+                  type="email"
+                  placeholder="optional"
+                  value={newOpp.contactEmail}
+                  onChange={(e) => setNewOpp((p) => ({ ...p, contactEmail: e.target.value }))}
+                  className="rounded-xl"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Description *</Label>
+              <Textarea
+                placeholder="What this funding is for"
+                value={newOpp.description}
+                onChange={(e) => setNewOpp((p) => ({ ...p, description: e.target.value }))}
+                className="rounded-xl"
+                rows={3}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Eligibility *</Label>
+              <Textarea
+                placeholder="Who can apply"
+                value={newOpp.eligibility}
+                onChange={(e) => setNewOpp((p) => ({ ...p, eligibility: e.target.value }))}
+                className="rounded-xl"
+                rows={2}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Notes</Label>
+              <Textarea
+                placeholder="Internal notes (optional)"
+                value={newOpp.notes}
+                onChange={(e) => setNewOpp((p) => ({ ...p, notes: e.target.value }))}
+                className="rounded-xl"
+                rows={2}
+              />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddDialog(false)} className="rounded-xl">Cancel</Button>
-            <Button onClick={handleAddOpportunity} className="rounded-xl">Add to Pipeline</Button>
+            <Button variant="outline" onClick={() => setShowAddDialog(false)} className="rounded-xl" disabled={submitting}>Cancel</Button>
+            <Button onClick={handleAddOpportunity} className="rounded-xl" disabled={submitting}>
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add to Pipeline"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

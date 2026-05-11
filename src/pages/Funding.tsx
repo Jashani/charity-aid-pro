@@ -11,15 +11,22 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { PoundSterling, Search, AlertTriangle, RefreshCw, Loader2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { PoundSterling, Search, AlertTriangle, RefreshCw, Loader2, FileText } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useActiveFunding } from "@/hooks/useActiveFunding";
-import { formatCurrency, daysUntil } from "@/lib/mock-data";
+import { formatCurrency, daysUntil, type ActiveFunding } from "@/lib/mock-data";
 
 const Funding = () => {
   const { data: allActiveFunding = [], isLoading } = useActiveFunding();
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [selectedFund, setSelectedFund] = useState<ActiveFunding | null>(null);
 
   const total = allActiveFunding.reduce((s, f) => s + f.amount, 0);
   const expiringSoon = allActiveFunding.filter((f) => daysUntil(f.endDate) <= 90 && daysUntil(f.endDate) > 0);
@@ -38,9 +45,9 @@ const Funding = () => {
   }, [allActiveFunding, searchTerm, typeFilter]);
 
   const getRowStyle = (daysLeft: number) => {
-    if (daysLeft <= 30) return "bg-destructive/5 border-l-4 border-l-destructive";
-    if (daysLeft <= 90) return "bg-warning/5 border-l-4 border-l-warning";
-    return "";
+    if (daysLeft <= 30) return "bg-destructive/5 border-l-4 border-l-destructive cursor-pointer hover:bg-destructive/10 transition-colors";
+    if (daysLeft <= 90) return "bg-warning/5 border-l-4 border-l-warning cursor-pointer hover:bg-warning/10 transition-colors";
+    return "cursor-pointer hover:bg-muted/30 transition-colors";
   };
 
   const getTimeLabel = (daysLeft: number) => {
@@ -130,7 +137,11 @@ const Funding = () => {
                 const remaining = daysUntil(fund.endDate);
                 const timeLabel = getTimeLabel(remaining);
                 return (
-                  <TableRow key={fund.id} className={getRowStyle(remaining)}>
+                  <TableRow
+                    key={fund.id}
+                    className={getRowStyle(remaining)}
+                    onClick={() => setSelectedFund(fund)}
+                  >
                     <TableCell>
                       <p className="font-medium text-sm">{fund.funderName}</p>
                       <p className="text-xs text-muted-foreground">{fund.programName}</p>
@@ -160,6 +171,42 @@ const Funding = () => {
           </Table>
         </Card>
       </div>
+
+      {/* Active funding detail dialog */}
+      <Dialog open={!!selectedFund} onOpenChange={() => setSelectedFund(null)}>
+        <DialogContent className="rounded-xl max-w-lg">
+          {selectedFund && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-xl">{selectedFund.funderName}</DialogTitle>
+                <p className="text-sm text-muted-foreground">{selectedFund.programName}</p>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-xl bg-muted/50 p-3">
+                    <p className="text-xs text-muted-foreground">Amount</p>
+                    <p className="text-sm font-bold">{formatCurrency(selectedFund.amount)}</p>
+                  </div>
+                  <div className="rounded-xl bg-muted/50 p-3">
+                    <p className="text-xs text-muted-foreground">End Date</p>
+                    <p className="text-sm font-bold">{new Date(selectedFund.endDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
+                  </div>
+                </div>
+                {selectedFund.notes && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1"><FileText className="h-3 w-3" /> Notes</p>
+                    <p className="text-sm">{selectedFund.notes}</p>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge variant="outline" className="rounded-full text-xs">{selectedFund.type}</Badge>
+                  {selectedFund.renewalEligible && <Badge variant="secondary" className="rounded-full text-xs">Renewable</Badge>}
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 };
