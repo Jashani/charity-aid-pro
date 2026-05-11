@@ -1,5 +1,5 @@
 export type FundingType = 'grant' | 'trust' | 'lottery' | 'corporate' | 'government';
-export type OpportunityStatus = 'identified' | 'researching' | 'applying' | 'submitted' | 'awarded' | 'rejected';
+export type OpportunityStatus = 'identified' | 'researching' | 'applying' | 'submitted' | 'awarded' | 'rejected' | 'dismissed';
 
 import type { GatingResult, ScoringBreakdown } from './database.types';
 
@@ -17,11 +17,14 @@ export interface FundingOpportunity {
   score: number;
   tags: string[];
   description: string;
-  eligibility: string;
   notes: string;
   website: string;
   contactName?: string;
   contactEmail?: string;
+  expirationDate?: string;
+  amountAwarded?: number;
+  dismissalReason?: string;
+  reapplicationDate?: string;
   gating?: GatingResult | null;
   scores?: ScoringBreakdown | null;
   scored_at?: string;

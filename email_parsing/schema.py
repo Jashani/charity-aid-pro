@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 FundingType = Literal["grant", "trust", "lottery", "corporate", "government"]
 OpportunityStatus = Literal[
-    "identified", "researching", "applying", "submitted", "awarded", "rejected"
+    "identified", "researching", "applying", "submitted", "awarded", "rejected", "dismissed"
 ]
 ClassificationLabel = Literal["FUNDING_OPPORTUNITY", "NEWSLETTER", "IRRELEVANT"]
 
@@ -29,11 +29,14 @@ class FundingOpportunity(BaseModel):
     score: float = Field(default=0.0, ge=0.0, le=100.0)
     tags: list[str] = Field(default_factory=list)
     description: str = ""
-    eligibility: str = ""
     notes: str = ""
     website: str = ""
     contact_name: str | None = None
     contact_email: str | None = None
+    expiration_date: str | None = None
+    amount_awarded: float | None = None
+    dismissal_reason: str | None = None
+    reapplication_date: str | None = None
 
     # Scoring output (populated after scoring.score_opportunity runs)
     gating: Any | None = None

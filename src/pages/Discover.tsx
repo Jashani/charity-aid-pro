@@ -19,7 +19,6 @@ import {
   Zap,
   Globe,
   FileText,
-  Users,
   Loader2,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
@@ -238,13 +237,6 @@ const Discover = () => {
                     <p className="text-sm font-bold">{selectedOpp.location}</p>
                   </div>
                 </div>
-
-                {selectedOpp.eligibility && (
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1"><Users className="h-3 w-3" /> Eligibility</p>
-                    <p className="text-sm">{selectedOpp.eligibility}</p>
-                  </div>
-                )}
 
                 {selectedOpp.notes && (
                   <div>

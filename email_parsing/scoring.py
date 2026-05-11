@@ -4,12 +4,14 @@ Stages, in order, per opportunity:
 
 1. Gating
    - geography (LLM with keyword fallback) — pass/fail on Kent-area eligibility
-   - eligibility (heuristic on description/eligibility text)
+   - M4W theme fit (heuristic on description) — flagged 'needs_review' when low
    Geography hard-fail short-circuits — no further scoring.
+   (M4W eligibility is determined by the LLM during parsing — opportunities the
+   charity is not eligible for are classified IRRELEVANT and never reach scoring.)
 
 2. Heuristic scores
    - funding value (internal, derived from amount)
-   - eligibility / strategic_fit / effort / probability / strategic_value heuristics
+   - strategic_fit / effort / probability / strategic_value heuristics
 
 3. Weighted final score (0-100) and tag suggestions merged into opp.tags.
 
@@ -141,7 +143,7 @@ ELIGIBILITY_KEYWORDS = (
 
 
 def _heuristic_scores(opp: FundingOpportunity) -> dict[str, dict[str, Any]]:
-    text = f"{opp.description} {opp.eligibility}".lower()
+    text = opp.description.lower()
     funder_type = opp.type
     amount_max = opp.amount_max if opp.amount_max is not None else opp.amount
 

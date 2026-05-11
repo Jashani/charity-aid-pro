@@ -36,7 +36,6 @@ def test_parse_email_envelope(monkeypatch):
                 "duration_months": 12,
                 "status": "identified",
                 "description": "Test",
-                "eligibility": "Anyone",
                 "website": "https://example.com",
             }
         ],

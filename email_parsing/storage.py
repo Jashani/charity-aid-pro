@@ -20,8 +20,9 @@ logger = logging.getLogger(__name__)
 _OPP_COLUMNS = {
     "id", "funder_name", "program_name", "amount", "amount_max", "type",
     "deadline", "location", "duration_months", "status", "score", "tags",
-    "description", "eligibility", "notes", "website", "contact_name",
-    "contact_email", "gating", "scores", "final_score", "scored_at",
+    "description", "notes", "website", "contact_name",
+    "contact_email", "expiration_date", "amount_awarded", "dismissal_reason",
+    "reapplication_date", "gating", "scores", "final_score", "scored_at",
 }
 
 

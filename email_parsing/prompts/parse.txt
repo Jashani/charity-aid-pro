@@ -29,7 +29,6 @@ keys exactly as shown. Schema:
       "score":           0,
       "tags":            [<zero or more of: "Quick Win","Multi-Year","Capital Cost">],
       "description":     "<2-3 sentence description>",
-      "eligibility":     "<key eligibility criteria>",
       "notes":           "<any other relevant notes or empty string>",
       "website":         "<URL — REQUIRED: scan the full email body for any URL related to this opportunity; use the most specific link available (application page, funder website). Must not be empty string unless no URL exists anywhere in the email.>",
       "contact_name":    "<contact name or null>",
@@ -38,15 +37,24 @@ keys exactly as shown. Schema:
   ]
 }
 
+Eligibility gating (apply BEFORE classifying):
+- If the funder's published eligibility criteria clearly EXCLUDE Music4Wellbeing
+  (e.g. for-profit only; individuals only; restricted to a region that does not
+  include Kent/South East/England/UK; a sector M4W does not work in such as
+  sport, football, housing, ed-tech, environment, animal welfare), classify as
+  IRRELEVANT and return opportunities = [].
+- If eligibility is clearly satisfied OR if it is ambiguous / unstated / partly
+  applicable, INCLUDE the opportunity. Human reviewers will decide. Do not omit
+  ambiguous opportunities.
+
 Rules:
 - Use FUNDING_OPPORTUNITY only when the email announces one or more grants,
   trusts, lotteries, corporate funds, or government funds open for application
-  AND the funding purpose is plausibly relevant to Music4Wellbeing's mission
-  (music, arts, wellbeing, mental health, community activities, older people,
+  AND M4W is eligible (or ambiguously eligible) per the gating above AND the
+  funding purpose is plausibly relevant to Music4Wellbeing's mission (music,
+  arts, wellbeing, mental health, community activities, older people,
   loneliness, isolation, disability, social inclusion, or broadly applicable
-  community/charity funding). If the email is a funding opportunity but its
-  purpose is clearly outside M4W's scope — e.g. sport, football, housing,
-  education technology, environment, animal welfare — classify it as IRRELEVANT.
+  community/charity funding).
 - Use NEWSLETTER for digests/bulletins that mention funding generally without a
   direct opportunity. opportunities should be [].
 - Use IRRELEVANT for anything else (spam, admin, personal, or funding clearly

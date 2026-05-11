@@ -3,13 +3,14 @@ import { supabase } from '@/lib/supabaseClient';
 import { type ActiveFunding } from '@/lib/mock-data';
 
 function mapRow(row: Record<string, unknown>): ActiveFunding {
+  const awarded = row.amount_awarded != null ? Number(row.amount_awarded) : Number(row.amount ?? 0);
   return {
     id: String(row.id ?? ''),
     funderName: String(row.funder_name ?? ''),
     programName: String(row.program_name ?? ''),
-    amount: Number(row.amount ?? 0),
+    amount: awarded,
     startDate: '',
-    endDate: String(row.deadline ?? ''),
+    endDate: row.expiration_date != null ? String(row.expiration_date) : '',
     type: (row.type as ActiveFunding['type']) ?? 'grant',
     renewalEligible: false,
     notes: String(row.notes ?? ''),
@@ -26,7 +27,7 @@ async function fetchActiveFunding(): Promise<ActiveFunding[]> {
     .from('opportunities')
     .select('*')
     .eq('status', 'awarded')
-    .order('deadline', { ascending: true });
+    .order('expiration_date', { ascending: true, nullsFirst: false });
 
   if (error) {
     console.error('[useActiveFunding] Supabase query failed:', error.message);

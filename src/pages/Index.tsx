@@ -9,7 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { PoundSterling, Clock, Search, AlertTriangle, ArrowRight, TrendingUp, Sparkles, Loader2, Globe, FileText, Users } from "lucide-react";
+import { PoundSterling, Clock, Search, AlertTriangle, ArrowRight, TrendingUp, Sparkles, Loader2, Globe, FileText } from "lucide-react";
 import { Link } from "react-router-dom";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useOpportunities } from "@/hooks/useOpportunities";
@@ -26,7 +26,7 @@ const Index = () => {
 
   const totalActive = activeFunding.reduce((sum, f) => sum + f.amount, 0);
   const upcomingDeadlines = opportunities.filter(
-    (o) => o.status !== "awarded" && o.status !== "rejected" && daysUntil(o.deadline) <= 30 && daysUntil(o.deadline) > 0
+    (o) => o.status !== "awarded" && o.status !== "rejected" && o.status !== "dismissed" && daysUntil(o.deadline) <= 30 && daysUntil(o.deadline) > 0
   );
   const urgentDeadlines = upcomingDeadlines.filter((o) => daysUntil(o.deadline) <= 7);
   const expiringSoon = activeFunding.filter((f) => { const d = daysUntil(f.endDate); return d <= 90 && d > 0; });
@@ -202,12 +202,6 @@ const Index = () => {
                     <p className="text-sm font-bold">{selectedOpp.location}</p>
                   </div>
                 </div>
-                {selectedOpp.eligibility && (
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1"><Users className="h-3 w-3" /> Eligibility</p>
-                    <p className="text-sm">{selectedOpp.eligibility}</p>
-                  </div>
-                )}
                 {selectedOpp.notes && (
                   <div>
                     <p className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1"><FileText className="h-3 w-3" /> Notes</p>

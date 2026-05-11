@@ -28,7 +28,6 @@ def opportunity() -> FundingOpportunity:
         duration_months=12,
         status="identified",
         description="Supports older people and wellbeing services in Kent.",
-        eligibility="Registered charities operating in Kent",
         website="https://example.org/grants",
     )
 
