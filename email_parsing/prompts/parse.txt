@@ -1,6 +1,12 @@
-You are an analyst on a UK charity's funding team. Read the email below, decide
-whether it describes a real funding opportunity, and if so extract every
-distinct opportunity mentioned.
+You are an analyst on the funding team at Music4Wellbeing, a UK charity based in
+Kent that delivers participatory music, singing, dance, and creative activities
+to improve the wellbeing of people facing isolation, loneliness, or poor mental
+health. Their beneficiaries are primarily older adults and people from
+disadvantaged communities in Kent and the South East.
+
+Read the email below, decide whether it describes a real funding opportunity
+that is relevant to Music4Wellbeing, and if so extract every distinct
+opportunity mentioned.
 
 Return a JSON object only — no markdown fences, no commentary. Schema:
 
@@ -25,9 +31,9 @@ Return a JSON object only — no markdown fences, no commentary. Schema:
       "description":          "<2-3 sentence description>",
       "eligibility":          "<key eligibility criteria>",
       "notes":                "<any other relevant notes or empty string>",
-      "website":              "<URL or empty string>",
+      "website":              "<URL — REQUIRED: scan the full email body for any URL related to this opportunity; use the most specific link available (application page, funder website). Must not be empty string unless no URL exists anywhere in the email.>",
       "contactName":          "<contact name or null>",
-      "contactEmail":         "<contact email or null>",
+      "contactEmail":         "<email address — REQUIRED: scan the full email body, headers, and signature for any email address. Must not be null unless no email address appears anywhere in the email.>",
       "source":               "email:{{email_id}}",
       "extractionConfidence": <float 0.0-1.0>
     }
@@ -35,14 +41,26 @@ Return a JSON object only — no markdown fences, no commentary. Schema:
 }
 
 Rules:
-- Use FUNDING_OPPORTUNITY when the email itself is announcing one or more grants,
-  trusts, lotteries, corporate funds, or government funds open for application.
+- Use FUNDING_OPPORTUNITY only when the email announces one or more grants,
+  trusts, lotteries, corporate funds, or government funds open for application
+  AND the funding purpose is plausibly relevant to Music4Wellbeing's mission
+  (music, arts, wellbeing, mental health, community activities, older people,
+  loneliness, isolation, disability, social inclusion, or broadly applicable
+  community/charity funding). If the email is a funding opportunity but its
+  purpose is clearly outside M4W's scope — e.g. sport, football, housing,
+  education technology, environment, animal welfare — classify it as IRRELEVANT.
 - Use NEWSLETTER for digests/bulletins that mention funding generally without a
   direct opportunity. opportunities should be [].
-- Use IRRELEVANT for anything else (spam, admin, personal). opportunities = [].
+- Use IRRELEVANT for anything else (spam, admin, personal, or funding clearly
+  unrelated to M4W's work). opportunities = [].
 - Only populate opportunities when classification = FUNDING_OPPORTUNITY.
-- If a field can't be determined, use the documented "unknown" / null / 0 default
-  rather than fabricating data, and lower extractionConfidence accordingly.
+- For website and contactEmail: these almost always exist in a real funding
+  email. Scan the entire email body carefully — check footers, signatures,
+  "apply here" links, "for more information" sections, and any hyperlinked text.
+  Set extractionConfidence below 0.5 if neither could be found.
+- If other fields can't be determined, use the documented "unknown" / null / 0
+  default rather than fabricating data, and lower extractionConfidence
+  accordingly.
 
 Email subject: {{subject}}
 
