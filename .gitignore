@@ -35,4 +35,7 @@ token_cache.bin
 .env
 result.json
 
+# Agents
 .mcp.json
+.agents
+.claude

@@ -40,10 +40,7 @@ const Reminders = () => {
   const [showAddRecipient, setShowAddRecipient] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [newLabel, setNewLabel] = useState("");
-  const [recipients, setRecipients] = useState<Recipient[]>([
-    { email: "team@musicforwellbeing.org", label: "Primary", type: "Active" },
-    { email: "director@musicforwellbeing.org", label: "Board updates", type: "Digest" },
-  ]);
+  const [recipients, setRecipients] = useState<Recipient[]>([]);
 
   const toggleRule = (id: string) => {
     setRules((prev) =>

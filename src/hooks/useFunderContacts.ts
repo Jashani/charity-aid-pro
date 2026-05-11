@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
-import { mockFunderContacts, type FunderContact } from '@/lib/mock-data';
+import { type FunderContact } from '@/lib/mock-data';
 
 function mapRow(row: Record<string, unknown>): FunderContact {
   return {
@@ -19,10 +19,10 @@ function mapRow(row: Record<string, unknown>): FunderContact {
   };
 }
 
-async function fetchFunderContacts(): Promise<{ data: FunderContact[]; source: 'supabase' | 'mock' }> {
+async function fetchFunderContacts(): Promise<FunderContact[]> {
   if (!supabase) {
-    console.log('[useFunderContacts] Supabase not configured → using mock data');
-    return { data: mockFunderContacts, source: 'mock' };
+    console.warn('[useFunderContacts] Supabase not configured');
+    return [];
   }
 
   const { data, error } = await supabase
@@ -31,29 +31,17 @@ async function fetchFunderContacts(): Promise<{ data: FunderContact[]; source: '
     .order('relationship_score', { ascending: false });
 
   if (error) {
-    console.warn('[useFunderContacts] Supabase query failed → using mock data:', error.message);
-    return { data: mockFunderContacts, source: 'mock' };
+    console.error('[useFunderContacts] Supabase query failed:', error.message);
+    throw error;
   }
 
-  if (!data || data.length === 0) {
-    console.log('[useFunderContacts] Supabase returned empty → using mock data');
-    return { data: mockFunderContacts, source: 'mock' };
-  }
-
-  console.log(`[useFunderContacts] ✅ Loaded ${data.length} contacts from Supabase`);
-  return { data: data.map(mapRow), source: 'supabase' };
+  return (data ?? []).map(mapRow);
 }
 
 export function useFunderContacts() {
-  const query = useQuery({
+  return useQuery({
     queryKey: ['funderContacts'],
     queryFn: fetchFunderContacts,
     staleTime: 1000 * 60 * 5,
   });
-
-  return {
-    ...query,
-    data: query.data?.data ?? [],
-    dataSource: query.data?.source ?? 'mock',
-  };
 }

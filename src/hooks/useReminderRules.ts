@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
-import { mockReminderRules, type ReminderRule } from '@/lib/mock-data';
+import { type ReminderRule } from '@/lib/mock-data';
 
 function mapRow(row: Record<string, unknown>): ReminderRule {
   return {
@@ -14,10 +14,10 @@ function mapRow(row: Record<string, unknown>): ReminderRule {
   };
 }
 
-async function fetchReminderRules(): Promise<{ data: ReminderRule[]; source: 'supabase' | 'mock' }> {
+async function fetchReminderRules(): Promise<ReminderRule[]> {
   if (!supabase) {
-    console.log('[useReminderRules] Supabase not configured → using mock data');
-    return { data: mockReminderRules, source: 'mock' };
+    console.warn('[useReminderRules] Supabase not configured');
+    return [];
   }
 
   const { data, error } = await supabase
@@ -26,29 +26,17 @@ async function fetchReminderRules(): Promise<{ data: ReminderRule[]; source: 'su
     .order('type', { ascending: true });
 
   if (error) {
-    console.warn('[useReminderRules] Supabase query failed → using mock data:', error.message);
-    return { data: mockReminderRules, source: 'mock' };
+    console.error('[useReminderRules] Supabase query failed:', error.message);
+    throw error;
   }
 
-  if (!data || data.length === 0) {
-    console.log('[useReminderRules] Supabase returned empty → using mock data');
-    return { data: mockReminderRules, source: 'mock' };
-  }
-
-  console.log(`[useReminderRules] ✅ Loaded ${data.length} rules from Supabase`);
-  return { data: data.map(mapRow), source: 'supabase' };
+  return (data ?? []).map(mapRow);
 }
 
 export function useReminderRules() {
-  const query = useQuery({
+  return useQuery({
     queryKey: ['reminderRules'],
     queryFn: fetchReminderRules,
     staleTime: 1000 * 60 * 5,
   });
-
-  return {
-    ...query,
-    data: query.data?.data ?? [],
-    dataSource: query.data?.source ?? 'mock',
-  };
 }

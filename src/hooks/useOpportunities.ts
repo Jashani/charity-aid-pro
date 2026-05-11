@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
-import { mockOpportunities, type FundingOpportunity } from '@/lib/mock-data';
+import { type FundingOpportunity } from '@/lib/mock-data';
 
 function mapRow(row: Record<string, unknown>): FundingOpportunity {
   return {
@@ -26,16 +26,14 @@ function mapRow(row: Record<string, unknown>): FundingOpportunity {
     website: String(row.website ?? ''),
     contactName: row.contact_name != null ? String(row.contact_name) : undefined,
     contactEmail: row.contact_email != null ? String(row.contact_email) : undefined,
-    rejectionFeedback: undefined, // not in schema
-    lastApplied: undefined,       // not in schema
     source: String(row.source ?? ''),
   };
 }
 
-async function fetchOpportunities(): Promise<{ data: FundingOpportunity[]; source: 'supabase' | 'mock' }> {
+async function fetchOpportunities(): Promise<FundingOpportunity[]> {
   if (!supabase) {
-    console.log('[useOpportunities] Supabase not configured → using mock data');
-    return { data: mockOpportunities, source: 'mock' };
+    console.warn('[useOpportunities] Supabase not configured');
+    return [];
   }
 
   const { data, error } = await supabase
@@ -44,29 +42,17 @@ async function fetchOpportunities(): Promise<{ data: FundingOpportunity[]; sourc
     .order('final_score', { ascending: false, nullsFirst: false });
 
   if (error) {
-    console.warn('[useOpportunities] Supabase query failed → using mock data:', error.message);
-    return { data: mockOpportunities, source: 'mock' };
+    console.error('[useOpportunities] Supabase query failed:', error.message);
+    throw error;
   }
 
-  if (!data || data.length === 0) {
-    console.log('[useOpportunities] Supabase returned empty → using mock data');
-    return { data: mockOpportunities, source: 'mock' };
-  }
-
-  console.log(`[useOpportunities] ✅ Loaded ${data.length} opportunities from Supabase`);
-  return { data: data.map(mapRow), source: 'supabase' };
+  return (data ?? []).map(mapRow);
 }
 
 export function useOpportunities() {
-  const query = useQuery({
+  return useQuery({
     queryKey: ['opportunities'],
     queryFn: fetchOpportunities,
     staleTime: 1000 * 60 * 5,
   });
-
-  return {
-    ...query,
-    data: query.data?.data ?? [],
-    dataSource: query.data?.source ?? 'mock',
-  };
 }

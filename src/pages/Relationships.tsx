@@ -16,32 +16,6 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { useFunderContacts } from "@/hooks/useFunderContacts";
 import { formatCurrency, type FunderContact } from "@/lib/mock-data";
 
-// Mock interaction history per contact
-const mockHistory: Record<string, { date: string; type: string; note: string }[]> = {
-  fc1: [
-    { date: "2026-01-15", type: "Meeting", note: "Discussed new project proposal for community workshops" },
-    { date: "2025-09-20", type: "Email", note: "Submitted final grant report — positive feedback received" },
-    { date: "2025-04-01", type: "Award", note: "£12,000 grant awarded for National Lottery Project" },
-    { date: "2025-03-01", type: "Application", note: "Application submitted for Project Grants 2025" },
-  ],
-  fc2: [
-    { date: "2024-12-01", type: "Email", note: "Received rejection feedback — encouraged to reapply with stronger evidence" },
-    { date: "2024-09-15", type: "Application", note: "Application submitted for Reaching Communities" },
-  ],
-  fc3: [
-    { date: "2026-02-10", type: "Event", note: "Attended Youth Music networking event — introduced to new contacts" },
-    { date: "2025-06-01", type: "Award", note: "£8,500 Incubator Fund grant awarded" },
-    { date: "2025-01-10", type: "Application", note: "Application submitted for Incubator Fund" },
-  ],
-  fc4: [
-    { date: "2026-02-20", type: "Application", note: "New application submitted — awaiting decision" },
-    { date: "2025-01-01", type: "Award", note: "£25,000 Main Grants Programme awarded (2-year)" },
-  ],
-  fc5: [
-    { date: "2025-11-20", type: "Call", note: "Progress check-in call — project on track, positive feedback" },
-    { date: "2024-04-01", type: "Award", note: "£45,000 Main Grants awarded (3-year programme)" },
-  ],
-};
 
 const typeIcons: Record<string, React.ReactNode> = {
   Meeting: <Users className="h-3.5 w-3.5 text-primary" />,
@@ -191,23 +165,7 @@ const Relationships = () => {
               <div className="space-y-1 py-2">
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Interaction History</p>
                 <div className="space-y-3">
-                  {(mockHistory[selectedContact.id] || []).map((entry, i) => (
-                    <div key={i} className="flex gap-3 items-start">
-                      <div className="mt-0.5 shrink-0">{typeIcons[entry.type] || <Clock className="h-3.5 w-3.5 text-muted-foreground" />}</div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-semibold">{entry.type}</span>
-                          <span className="text-[10px] text-muted-foreground">
-                            {new Date(entry.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                          </span>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">{entry.note}</p>
-                      </div>
-                    </div>
-                  ))}
-                  {!(mockHistory[selectedContact.id]?.length) && (
-                    <p className="text-xs text-muted-foreground text-center py-4">No history recorded yet.</p>
-                  )}
+                  <p className="text-xs text-muted-foreground text-center py-4">No history recorded yet.</p>
                 </div>
               </div>
             </>
