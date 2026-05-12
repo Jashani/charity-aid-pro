@@ -30,7 +30,7 @@ async function fetchActiveFunding(): Promise<ActiveFunding[]> {
   const { data, error } = await supabase
     .from('opportunities')
     .select('*')
-    .eq('status', 'awarded')
+    .in('status', ['awarded', 'funds_received'])
     .order('expiration_date', { ascending: true, nullsFirst: false });
 
   if (error) {

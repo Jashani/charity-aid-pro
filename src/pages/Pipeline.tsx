@@ -29,10 +29,12 @@ import {
 
 const columns: { id: OpportunityStatus; label: string; color: string }[] = [
   { id: "identified", label: "Identified", color: "bg-muted-foreground" },
+  { id: "on_hold", label: "On Hold", color: "bg-orange-400" },
   { id: "researching", label: "Researching", color: "bg-primary" },
   { id: "applying", label: "Applying", color: "bg-warning" },
   { id: "submitted", label: "Submitted", color: "bg-secondary" },
   { id: "awarded", label: "Awarded", color: "bg-success" },
+  { id: "funds_received", label: "Funds Received", color: "bg-emerald-500" },
   { id: "rejected", label: "Rejected", color: "bg-destructive" },
   { id: "dismissed", label: "Dismissed", color: "bg-muted" },
 ];
@@ -58,7 +60,7 @@ const emptyForm = {
 type PendingMove = {
   opp: FundingOpportunity;
   fromStatus: OpportunityStatus;
-  toStatus: "awarded" | "rejected" | "dismissed" | "submitted";
+  toStatus: "awarded" | "rejected" | "dismissed" | "submitted" | "funds_received";
 };
 
 const Pipeline = () => {
@@ -78,6 +80,7 @@ const Pipeline = () => {
   const [rejectedForm, setRejectedForm] = useState({ reapplicationDate: "", feedback: "" });
   const [dismissedForm, setDismissedForm] = useState({ dismissalReason: "" });
   const [submittedForm, setSubmittedForm] = useState({ expectedResultsDate: "" });
+  const [fundsReceivedForm, setFundsReceivedForm] = useState({ dateFundingReceived: "" });
 
   const handleDragStart = (id: string) => setDraggedId(id);
 
@@ -101,12 +104,13 @@ const Pipeline = () => {
     setDragOverCol(null);
     if (!moved || moved.status === targetStatus) return;
 
-    if (targetStatus === "awarded" || targetStatus === "rejected" || targetStatus === "dismissed" || targetStatus === "submitted") {
+    if (targetStatus === "awarded" || targetStatus === "rejected" || targetStatus === "dismissed" || targetStatus === "submitted" || targetStatus === "funds_received") {
       setPendingMove({ opp: moved, fromStatus: moved.status, toStatus: targetStatus });
       setAwardedForm({ expirationDate: "", amountAwarded: String(moved.amount || ""), tranches: "", dateFundingReceived: "" });
       setRejectedForm({ reapplicationDate: "", feedback: "" });
       setDismissedForm({ dismissalReason: "" });
       setSubmittedForm({ expectedResultsDate: "" });
+      setFundsReceivedForm({ dateFundingReceived: new Date().toISOString().slice(0, 10) });
       // optimistic move into target column while dialog is open
       setOpportunities((prev) => prev.map((o) => (o.id === movedId ? { ...o, status: targetStatus } : o)));
       return;
@@ -250,6 +254,30 @@ const Pipeline = () => {
     toast.success("Marked as submitted");
   };
 
+  const submitFundsReceived = async () => {
+    if (!pendingMove) return;
+    setSubmitting(true);
+    const { error } = await persistStatus(pendingMove.opp.id, "funds_received", {
+      ...(fundsReceivedForm.dateFundingReceived ? { date_funding_received: fundsReceivedForm.dateFundingReceived } : {}),
+    });
+    setSubmitting(false);
+    if (error) {
+      toast.error(`Failed: ${error.message}`);
+      return;
+    }
+    setOpportunities((prev) =>
+      prev.map((o) =>
+        o.id === pendingMove.opp.id
+          ? { ...o, status: "funds_received", dateFundingReceived: fundsReceivedForm.dateFundingReceived || undefined }
+          : o
+      )
+    );
+    queryClient.invalidateQueries({ queryKey: ["opportunities"] });
+    queryClient.invalidateQueries({ queryKey: ["activeFunding"] });
+    setPendingMove(null);
+    toast.success("Funds received recorded");
+  };
+
   const toggleCollapse = (colId: string) => {
     setCollapsedCols((prev) => {
       const next = new Set(prev);
@@ -370,7 +398,7 @@ const Pipeline = () => {
         </div>
 
         <div className="flex gap-2 flex-wrap">
-          {columns.filter((c) => c.id !== "dismissed").map((col) => {
+          {columns.filter((c) => c.id !== "dismissed" && c.id !== "funds_received").map((col) => {
             const count = opportunities.filter((o) => o.status === col.id).length;
             return (
               <div key={col.id} className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm">
@@ -408,7 +436,7 @@ const Pipeline = () => {
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    {items.length > 0 && col.id !== "dismissed" && (
+                    {items.length > 0 && col.id !== "dismissed" && col.id !== "on_hold" && (
                       <span className="text-xs text-muted-foreground font-medium">
                         {formatCurrency(totalValue(items))}
                       </span>
@@ -455,7 +483,9 @@ const Pipeline = () => {
                                 <span className="text-muted-foreground">reapply {opp.reapplicationDate}</span>
                               ) : opp.status === "submitted" && opp.expectedResultsDate ? (
                                 <span className="text-muted-foreground">results {opp.expectedResultsDate}</span>
-                              ) : opp.status === "dismissed" ? null : (
+                              ) : opp.status === "funds_received" && opp.dateFundingReceived ? (
+                                <span className="text-muted-foreground">received {opp.dateFundingReceived}</span>
+                              ) : opp.status === "dismissed" || opp.status === "on_hold" ? null : (
                                 <span className="text-muted-foreground">{daysUntil(opp.deadline)}d left</span>
                               )}
                             </div>
@@ -491,7 +521,7 @@ const Pipeline = () => {
                   <div className="border border-t-0 rounded-b-xl bg-muted/10 px-4 py-2">
                     <p className="text-xs text-muted-foreground">
                       {items.length} item{items.length !== 1 ? "s" : ""}
-                      {col.id !== "dismissed" && ` · ${formatCurrency(totalValue(items))}`}
+                      {col.id !== "dismissed" && col.id !== "on_hold" && ` · ${formatCurrency(totalValue(items))}`}
                     </p>
                   </div>
                 )}
@@ -787,6 +817,38 @@ const Pipeline = () => {
           <DialogFooter>
             <Button variant="outline" onClick={cancelPendingMove} className="rounded-xl" disabled={submitting}>Cancel</Button>
             <Button onClick={submitRejected} className="rounded-xl" disabled={submitting}>
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Funds Received Dialog */}
+      <Dialog
+        open={pendingMove?.toStatus === "funds_received"}
+        onOpenChange={(open) => { if (!open) cancelPendingMove(); }}
+      >
+        <DialogContent className="rounded-xl">
+          <DialogHeader>
+            <DialogTitle>Record Funds Received</DialogTitle>
+            <DialogDescription>
+              {pendingMove?.opp.funderName} — {pendingMove?.opp.programName}. When did the money land in the bank?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Date Funding Received *</Label>
+              <Input
+                type="date"
+                value={fundsReceivedForm.dateFundingReceived}
+                onChange={(e) => setFundsReceivedForm({ dateFundingReceived: e.target.value })}
+                className="rounded-xl"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={cancelPendingMove} className="rounded-xl" disabled={submitting}>Cancel</Button>
+            <Button onClick={submitFundsReceived} className="rounded-xl" disabled={submitting}>
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}
             </Button>
           </DialogFooter>
