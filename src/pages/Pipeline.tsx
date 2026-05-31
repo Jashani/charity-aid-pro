@@ -15,7 +15,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { GripVertical, Plus, ChevronDown, ChevronUp, Loader2, PartyPopper } from "lucide-react";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { GripVertical, Plus, ChevronDown, ChevronUp, Loader2, PartyPopper, Pencil } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { toast } from "sonner";
 import { useOpportunities } from "@/hooks/useOpportunities";
@@ -57,6 +65,35 @@ const emptyForm = {
   financialYear: "",
 };
 
+type EditForm = typeof emptyForm & {
+  status: OpportunityStatus;
+  expirationDate: string;
+  amountAwarded: string;
+  tranches: string;
+  dateFundingReceived: string;
+  submissionDate: string;
+  expectedResultsDate: string;
+  reapplicationDate: string;
+  feedback: string;
+  dismissalReason: string;
+};
+
+const emptyEditForm: EditForm = {
+  ...emptyForm,
+  location: "",
+  durationMonths: "",
+  status: "identified",
+  expirationDate: "",
+  amountAwarded: "",
+  tranches: "",
+  dateFundingReceived: "",
+  submissionDate: "",
+  expectedResultsDate: "",
+  reapplicationDate: "",
+  feedback: "",
+  dismissalReason: "",
+};
+
 type PendingMove = {
   opp: FundingOpportunity;
   fromStatus: OpportunityStatus;
@@ -81,6 +118,10 @@ const Pipeline = () => {
   const [dismissedForm, setDismissedForm] = useState({ dismissalReason: "" });
   const [submittedForm, setSubmittedForm] = useState({ expectedResultsDate: "" });
   const [fundsReceivedForm, setFundsReceivedForm] = useState({ dateFundingReceived: "" });
+
+  const [editingOpp, setEditingOpp] = useState<FundingOpportunity | null>(null);
+  const [editForm, setEditForm] = useState<EditForm>(emptyEditForm);
+  const [editSubmitting, setEditSubmitting] = useState(false);
 
   const handleDragStart = (id: string) => setDraggedId(id);
 
@@ -111,7 +152,6 @@ const Pipeline = () => {
       setDismissedForm({ dismissalReason: "" });
       setSubmittedForm({ expectedResultsDate: "" });
       setFundsReceivedForm({ dateFundingReceived: new Date().toISOString().slice(0, 10) });
-      // optimistic move into target column while dialog is open
       setOpportunities((prev) => prev.map((o) => (o.id === movedId ? { ...o, status: targetStatus } : o)));
       return;
     }
@@ -289,6 +329,128 @@ const Pipeline = () => {
   const totalValue = (items: FundingOpportunity[]) =>
     items.reduce((s, o) => s + (o.status === "awarded" && o.amountAwarded != null ? o.amountAwarded : o.amount), 0);
 
+  const handleCardClick = (opp: FundingOpportunity) => {
+    setEditingOpp(opp);
+    setEditForm({
+      funderName: opp.funderName,
+      programName: opp.programName,
+      amount: String(opp.amount),
+      amountMax: opp.amountMax != null ? String(opp.amountMax) : "",
+      type: opp.type,
+      deadline: opp.deadline,
+      location: opp.location,
+      durationMonths: String(opp.durationMonths),
+      description: opp.description,
+      website: opp.website,
+      contactName: opp.contactName ?? "",
+      contactEmail: opp.contactEmail ?? "",
+      notes: opp.notes,
+      purpose: opp.purpose ?? "",
+      financialYear: opp.financialYear ?? "",
+      status: opp.status,
+      expirationDate: opp.expirationDate ?? "",
+      amountAwarded: opp.amountAwarded != null ? String(opp.amountAwarded) : "",
+      tranches: opp.tranches != null ? String(opp.tranches) : "",
+      dateFundingReceived: opp.dateFundingReceived ?? "",
+      submissionDate: opp.submissionDate ?? "",
+      expectedResultsDate: opp.expectedResultsDate ?? "",
+      reapplicationDate: opp.reapplicationDate ?? "",
+      feedback: opp.feedback ?? "",
+      dismissalReason: opp.dismissalReason ?? "",
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingOpp) return;
+    if (!editForm.funderName || !editForm.programName || !editForm.amount || !editForm.deadline) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+    if (!supabase) {
+      toast.error("Supabase not configured");
+      return;
+    }
+
+    setEditSubmitting(true);
+    const { error } = await supabase
+      .from("opportunities")
+      .update({
+        funder_name: editForm.funderName,
+        program_name: editForm.programName,
+        amount: parseFloat(editForm.amount),
+        amount_max: editForm.amountMax ? parseFloat(editForm.amountMax) : null,
+        type: editForm.type,
+        deadline: editForm.deadline,
+        location: editForm.location,
+        duration_months: parseInt(editForm.durationMonths, 10) || 12,
+        description: editForm.description,
+        website: editForm.website,
+        contact_name: editForm.contactName || null,
+        contact_email: editForm.contactEmail || null,
+        notes: editForm.notes,
+        purpose: editForm.purpose || null,
+        financial_year: editForm.financialYear || null,
+        status: editForm.status,
+        expiration_date: editForm.expirationDate || null,
+        amount_awarded: editForm.amountAwarded ? parseFloat(editForm.amountAwarded) : null,
+        tranches: editForm.tranches ? parseInt(editForm.tranches, 10) : null,
+        date_funding_received: editForm.dateFundingReceived || null,
+        submission_date: editForm.submissionDate || null,
+        expected_results_date: editForm.expectedResultsDate || null,
+        reapplication_date: editForm.reapplicationDate || null,
+        feedback: editForm.feedback || null,
+        dismissal_reason: editForm.dismissalReason || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", editingOpp.id);
+    setEditSubmitting(false);
+
+    if (error) {
+      toast.error(`Failed to save: ${error.message}`);
+      return;
+    }
+
+    setOpportunities((prev) =>
+      prev.map((o) =>
+        o.id === editingOpp.id
+          ? {
+              ...o,
+              funderName: editForm.funderName,
+              programName: editForm.programName,
+              amount: parseFloat(editForm.amount),
+              amountMax: editForm.amountMax ? parseFloat(editForm.amountMax) : undefined,
+              type: editForm.type,
+              deadline: editForm.deadline,
+              location: editForm.location,
+              durationMonths: parseInt(editForm.durationMonths, 10) || 12,
+              description: editForm.description,
+              website: editForm.website,
+              contactName: editForm.contactName || undefined,
+              contactEmail: editForm.contactEmail || undefined,
+              notes: editForm.notes,
+              purpose: editForm.purpose || undefined,
+              financialYear: editForm.financialYear || undefined,
+              status: editForm.status,
+              expirationDate: editForm.expirationDate || undefined,
+              amountAwarded: editForm.amountAwarded ? parseFloat(editForm.amountAwarded) : undefined,
+              tranches: editForm.tranches ? parseInt(editForm.tranches, 10) : undefined,
+              dateFundingReceived: editForm.dateFundingReceived || undefined,
+              submissionDate: editForm.submissionDate || undefined,
+              expectedResultsDate: editForm.expectedResultsDate || undefined,
+              reapplicationDate: editForm.reapplicationDate || undefined,
+              feedback: editForm.feedback || undefined,
+              dismissalReason: editForm.dismissalReason || undefined,
+            }
+          : o
+      )
+    );
+
+    queryClient.invalidateQueries({ queryKey: ["opportunities"] });
+    queryClient.invalidateQueries({ queryKey: ["activeFunding"] });
+    setEditingOpp(null);
+    toast.success("Opportunity updated");
+  };
+
   const handleAddOpportunity = async () => {
     if (
       !newOpp.funderName ||
@@ -390,7 +552,7 @@ const Pipeline = () => {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Pipeline</h1>
-            <p className="text-muted-foreground mt-1">Drag opportunities between stages.</p>
+            <p className="text-muted-foreground mt-1">Drag opportunities between stages, or click to edit.</p>
           </div>
           <Button className="gap-2 rounded-xl" onClick={() => setShowAddDialog(true)}>
             <Plus className="h-4 w-4" /> Add Opportunity
@@ -462,16 +624,21 @@ const Pipeline = () => {
                             key={opp.id}
                             draggable
                             onDragStart={() => handleDragStart(opp.id)}
-                            className={`rounded-xl border bg-card p-3 space-y-2 cursor-grab active:cursor-grabbing transition-all hover:shadow-md ${
+                            onClick={() => handleCardClick(opp)}
+                            className={`group rounded-xl border bg-card p-3 space-y-2 cursor-pointer transition-all hover:shadow-md hover:border-primary/30 ${
                               draggedId === opp.id ? "opacity-40 scale-95" : ""
                             }`}
                           >
                             <div className="flex items-start gap-2">
-                              <GripVertical className="h-4 w-4 text-muted-foreground/30 mt-0.5 shrink-0" />
+                              <GripVertical
+                                className="h-4 w-4 text-muted-foreground/30 mt-0.5 shrink-0 cursor-grab"
+                                onMouseDown={(e) => e.stopPropagation()}
+                              />
                               <div className="min-w-0 flex-1">
                                 <p className="text-sm font-medium leading-tight">{opp.funderName}</p>
                                 <p className="text-xs text-muted-foreground mt-0.5 truncate">{opp.programName}</p>
                               </div>
+                              <Pencil className="h-3 w-3 text-muted-foreground/0 group-hover:text-muted-foreground/50 transition-colors shrink-0 mt-0.5" />
                             </div>
                             <div className="flex items-center justify-between text-xs pl-6">
                               <span className="font-semibold">
@@ -531,6 +698,256 @@ const Pipeline = () => {
         </div>
       </div>
 
+      {/* Edit Opportunity Sheet */}
+      <Sheet open={!!editingOpp} onOpenChange={(open) => { if (!open) setEditingOpp(null); }}>
+        <SheetContent className="sm:max-w-lg flex flex-col overflow-hidden p-0">
+          <SheetHeader className="px-6 pt-6 pb-4 border-b">
+            <SheetTitle>Edit Opportunity</SheetTitle>
+            <SheetDescription>
+              {editingOpp?.funderName} — {editingOpp?.programName}
+            </SheetDescription>
+          </SheetHeader>
+
+          <ScrollArea className="flex-1">
+            <div className="px-6 py-4 space-y-5">
+
+              {/* Status */}
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <Select
+                  value={editForm.status}
+                  onValueChange={(v) => setEditForm((p) => ({ ...p, status: v as OpportunityStatus }))}
+                >
+                  <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {columns.map((col) => (
+                      <SelectItem key={col.id} value={col.id}>{col.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {editForm.status === "awarded" && (
+                <div className="rounded-xl border p-4 space-y-3 bg-success/5 border-success/20">
+                  <p className="text-xs font-semibold text-success uppercase tracking-wide">Award Details</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Amount Awarded (£) *</Label>
+                      <Input type="number" value={editForm.amountAwarded} onChange={(e) => setEditForm((p) => ({ ...p, amountAwarded: e.target.value }))} className="rounded-xl" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Expiration Date *</Label>
+                      <Input type="date" value={editForm.expirationDate} onChange={(e) => setEditForm((p) => ({ ...p, expirationDate: e.target.value }))} className="rounded-xl" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Tranches</Label>
+                      <Input type="number" placeholder="e.g. 1" value={editForm.tranches} onChange={(e) => setEditForm((p) => ({ ...p, tranches: e.target.value }))} className="rounded-xl" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Date Funding Received</Label>
+                      <Input type="date" value={editForm.dateFundingReceived} onChange={(e) => setEditForm((p) => ({ ...p, dateFundingReceived: e.target.value }))} className="rounded-xl" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {editForm.status === "funds_received" && (
+                <div className="rounded-xl border p-4 space-y-3 bg-emerald-500/5 border-emerald-500/20">
+                  <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">Funds Received</p>
+                  <div className="space-y-2">
+                    <Label>Date Funding Received</Label>
+                    <Input type="date" value={editForm.dateFundingReceived} onChange={(e) => setEditForm((p) => ({ ...p, dateFundingReceived: e.target.value }))} className="rounded-xl" />
+                  </div>
+                </div>
+              )}
+
+              {editForm.status === "submitted" && (
+                <div className="rounded-xl border p-4 space-y-3 bg-secondary/5 border-secondary/20">
+                  <p className="text-xs font-semibold text-secondary uppercase tracking-wide">Submission Details</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Submission Date</Label>
+                      <Input type="date" value={editForm.submissionDate} onChange={(e) => setEditForm((p) => ({ ...p, submissionDate: e.target.value }))} className="rounded-xl" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Expected Results Date</Label>
+                      <Input type="date" value={editForm.expectedResultsDate} onChange={(e) => setEditForm((p) => ({ ...p, expectedResultsDate: e.target.value }))} className="rounded-xl" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {editForm.status === "rejected" && (
+                <div className="rounded-xl border p-4 space-y-3 bg-destructive/5 border-destructive/20">
+                  <p className="text-xs font-semibold text-destructive uppercase tracking-wide">Rejection Details</p>
+                  <div className="space-y-2">
+                    <Label>Reapplication Date *</Label>
+                    <Input type="date" value={editForm.reapplicationDate} onChange={(e) => setEditForm((p) => ({ ...p, reapplicationDate: e.target.value }))} className="rounded-xl" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Funder Feedback</Label>
+                    <Textarea placeholder="Any feedback from the funder" value={editForm.feedback} onChange={(e) => setEditForm((p) => ({ ...p, feedback: e.target.value }))} className="rounded-xl" rows={2} />
+                  </div>
+                </div>
+              )}
+
+              {editForm.status === "dismissed" && (
+                <div className="rounded-xl border p-4 space-y-3 bg-muted/30 border-muted">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Dismissal Details</p>
+                  <div className="space-y-2">
+                    <Label>Reason for Dismissal *</Label>
+                    <Textarea placeholder="Why are we dropping this opportunity?" value={editForm.dismissalReason} onChange={(e) => setEditForm((p) => ({ ...p, dismissalReason: e.target.value }))} className="rounded-xl" rows={2} />
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide pt-1">Funder & Programme</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Funder Name *</Label>
+                  <Input value={editForm.funderName} onChange={(e) => setEditForm((p) => ({ ...p, funderName: e.target.value }))} className="rounded-xl" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Programme Name *</Label>
+                  <Input value={editForm.programName} onChange={(e) => setEditForm((p) => ({ ...p, programName: e.target.value }))} className="rounded-xl" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Amount (£) *</Label>
+                  <Input type="number" value={editForm.amount} onChange={(e) => setEditForm((p) => ({ ...p, amount: e.target.value }))} className="rounded-xl" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Amount Max (£)</Label>
+                  <Input type="number" placeholder="optional" value={editForm.amountMax} onChange={(e) => setEditForm((p) => ({ ...p, amountMax: e.target.value }))} className="rounded-xl" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Application Deadline *</Label>
+                  <Input type="date" value={editForm.deadline} onChange={(e) => setEditForm((p) => ({ ...p, deadline: e.target.value }))} className="rounded-xl" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Type</Label>
+                  <Select value={editForm.type} onValueChange={(v) => setEditForm((p) => ({ ...p, type: v as FundingOpportunity["type"] }))}>
+                    <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="trust">Trust</SelectItem>
+                      <SelectItem value="lottery">Lottery</SelectItem>
+                      <SelectItem value="government">Government</SelectItem>
+                      <SelectItem value="corporate">Corporate</SelectItem>
+                      <SelectItem value="grant">Grant</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Location</Label>
+                  <Input value={editForm.location} onChange={(e) => setEditForm((p) => ({ ...p, location: e.target.value }))} className="rounded-xl" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Duration (months)</Label>
+                  <Input type="number" value={editForm.durationMonths} onChange={(e) => setEditForm((p) => ({ ...p, durationMonths: e.target.value }))} className="rounded-xl" />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Website</Label>
+                <Input
+                  placeholder="https://..."
+                  value={editForm.website}
+                  onChange={(e) => setEditForm((p) => ({ ...p, website: e.target.value }))}
+                  className="rounded-xl"
+                />
+              </div>
+
+              <div className="space-y-1 pt-1">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Contact</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Contact Name</Label>
+                  <Input placeholder="optional" value={editForm.contactName} onChange={(e) => setEditForm((p) => ({ ...p, contactName: e.target.value }))} className="rounded-xl" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Contact Email</Label>
+                  <Input type="email" placeholder="optional" value={editForm.contactEmail} onChange={(e) => setEditForm((p) => ({ ...p, contactEmail: e.target.value }))} className="rounded-xl" />
+                </div>
+              </div>
+
+              <div className="space-y-1 pt-1">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Details</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Description</Label>
+                <Textarea value={editForm.description} onChange={(e) => setEditForm((p) => ({ ...p, description: e.target.value }))} className="rounded-xl" rows={3} />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Notes</Label>
+                <Textarea placeholder="Internal notes" value={editForm.notes} onChange={(e) => setEditForm((p) => ({ ...p, notes: e.target.value }))} className="rounded-xl" rows={2} />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Purpose</Label>
+                  <Select value={editForm.purpose} onValueChange={(v) => setEditForm((p) => ({ ...p, purpose: v }))}>
+                    <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select…" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="project">Project</SelectItem>
+                      <SelectItem value="core">Core</SelectItem>
+                      <SelectItem value="unrestricted">Unrestricted</SelectItem>
+                      <SelectItem value="core_and_project">Core &amp; Project</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Financial Year</Label>
+                  <Input placeholder="e.g. 2026-2027" value={editForm.financialYear} onChange={(e) => setEditForm((p) => ({ ...p, financialYear: e.target.value }))} className="rounded-xl" />
+                </div>
+              </div>
+
+              {editingOpp && (editingOpp.score > 0 || editingOpp.tags.length > 0) && (
+                <div className="rounded-xl border p-4 space-y-2 bg-muted/20">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Computed</p>
+                  {editingOpp.score > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">Match score</span>
+                      <span className="text-sm font-bold">{editingOpp.score}</span>
+                    </div>
+                  )}
+                  {editingOpp.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {editingOpp.tags.map((tag) => (
+                        <Badge key={tag} variant="outline" className="text-xs rounded-full">{tag}</Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="h-2" />
+            </div>
+          </ScrollArea>
+
+          <SheetFooter className="px-6 py-4 border-t gap-2">
+            <Button variant="outline" onClick={() => setEditingOpp(null)} disabled={editSubmitting} className="rounded-xl">Cancel</Button>
+            <Button onClick={handleSaveEdit} disabled={editSubmitting} className="rounded-xl">
+              {editSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Changes"}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
       {/* Add Opportunity Dialog */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
         <DialogContent className="rounded-xl max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -542,56 +959,27 @@ const Pipeline = () => {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Funder Name *</Label>
-                <Input
-                  placeholder="e.g. Arts Council England"
-                  value={newOpp.funderName}
-                  onChange={(e) => setNewOpp((p) => ({ ...p, funderName: e.target.value }))}
-                  className="rounded-xl"
-                />
+                <Input placeholder="e.g. Arts Council England" value={newOpp.funderName} onChange={(e) => setNewOpp((p) => ({ ...p, funderName: e.target.value }))} className="rounded-xl" />
               </div>
               <div className="space-y-2">
                 <Label>Programme Name *</Label>
-                <Input
-                  placeholder="e.g. Project Grants"
-                  value={newOpp.programName}
-                  onChange={(e) => setNewOpp((p) => ({ ...p, programName: e.target.value }))}
-                  className="rounded-xl"
-                />
+                <Input placeholder="e.g. Project Grants" value={newOpp.programName} onChange={(e) => setNewOpp((p) => ({ ...p, programName: e.target.value }))} className="rounded-xl" />
               </div>
             </div>
-
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Amount (£) *</Label>
-                <Input
-                  type="number"
-                  placeholder="10000"
-                  value={newOpp.amount}
-                  onChange={(e) => setNewOpp((p) => ({ ...p, amount: e.target.value }))}
-                  className="rounded-xl"
-                />
+                <Input type="number" placeholder="10000" value={newOpp.amount} onChange={(e) => setNewOpp((p) => ({ ...p, amount: e.target.value }))} className="rounded-xl" />
               </div>
               <div className="space-y-2">
                 <Label>Amount Max (£)</Label>
-                <Input
-                  type="number"
-                  placeholder="optional"
-                  value={newOpp.amountMax}
-                  onChange={(e) => setNewOpp((p) => ({ ...p, amountMax: e.target.value }))}
-                  className="rounded-xl"
-                />
+                <Input type="number" placeholder="optional" value={newOpp.amountMax} onChange={(e) => setNewOpp((p) => ({ ...p, amountMax: e.target.value }))} className="rounded-xl" />
               </div>
             </div>
-
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Application Deadline *</Label>
-                <Input
-                  type="date"
-                  value={newOpp.deadline}
-                  onChange={(e) => setNewOpp((p) => ({ ...p, deadline: e.target.value }))}
-                  className="rounded-xl"
-                />
+                <Input type="date" value={newOpp.deadline} onChange={(e) => setNewOpp((p) => ({ ...p, deadline: e.target.value }))} className="rounded-xl" />
               </div>
               <div className="space-y-2">
                 <Label>Type *</Label>
@@ -607,83 +995,38 @@ const Pipeline = () => {
                 </Select>
               </div>
             </div>
-
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Location *</Label>
-                <Input
-                  placeholder="e.g. UK-wide"
-                  value={newOpp.location}
-                  onChange={(e) => setNewOpp((p) => ({ ...p, location: e.target.value }))}
-                  className="rounded-xl"
-                />
+                <Input placeholder="e.g. UK-wide" value={newOpp.location} onChange={(e) => setNewOpp((p) => ({ ...p, location: e.target.value }))} className="rounded-xl" />
               </div>
               <div className="space-y-2">
                 <Label>Duration (months) *</Label>
-                <Input
-                  type="number"
-                  placeholder="12"
-                  value={newOpp.durationMonths}
-                  onChange={(e) => setNewOpp((p) => ({ ...p, durationMonths: e.target.value }))}
-                  className="rounded-xl"
-                />
+                <Input type="number" placeholder="12" value={newOpp.durationMonths} onChange={(e) => setNewOpp((p) => ({ ...p, durationMonths: e.target.value }))} className="rounded-xl" />
               </div>
             </div>
-
             <div className="space-y-2">
               <Label>Website *</Label>
-              <Input
-                placeholder="https://..."
-                value={newOpp.website}
-                onChange={(e) => setNewOpp((p) => ({ ...p, website: e.target.value }))}
-                className="rounded-xl"
-              />
+              <Input placeholder="https://..." value={newOpp.website} onChange={(e) => setNewOpp((p) => ({ ...p, website: e.target.value }))} className="rounded-xl" />
             </div>
-
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Contact Name</Label>
-                <Input
-                  placeholder="optional"
-                  value={newOpp.contactName}
-                  onChange={(e) => setNewOpp((p) => ({ ...p, contactName: e.target.value }))}
-                  className="rounded-xl"
-                />
+                <Input placeholder="optional" value={newOpp.contactName} onChange={(e) => setNewOpp((p) => ({ ...p, contactName: e.target.value }))} className="rounded-xl" />
               </div>
               <div className="space-y-2">
                 <Label>Contact Email</Label>
-                <Input
-                  type="email"
-                  placeholder="optional"
-                  value={newOpp.contactEmail}
-                  onChange={(e) => setNewOpp((p) => ({ ...p, contactEmail: e.target.value }))}
-                  className="rounded-xl"
-                />
+                <Input type="email" placeholder="optional" value={newOpp.contactEmail} onChange={(e) => setNewOpp((p) => ({ ...p, contactEmail: e.target.value }))} className="rounded-xl" />
               </div>
             </div>
-
             <div className="space-y-2">
               <Label>Description *</Label>
-              <Textarea
-                placeholder="What this funding is for"
-                value={newOpp.description}
-                onChange={(e) => setNewOpp((p) => ({ ...p, description: e.target.value }))}
-                className="rounded-xl"
-                rows={3}
-              />
+              <Textarea placeholder="What this funding is for" value={newOpp.description} onChange={(e) => setNewOpp((p) => ({ ...p, description: e.target.value }))} className="rounded-xl" rows={3} />
             </div>
-
             <div className="space-y-2">
               <Label>Notes</Label>
-              <Textarea
-                placeholder="Internal notes (optional)"
-                value={newOpp.notes}
-                onChange={(e) => setNewOpp((p) => ({ ...p, notes: e.target.value }))}
-                className="rounded-xl"
-                rows={2}
-              />
+              <Textarea placeholder="Internal notes (optional)" value={newOpp.notes} onChange={(e) => setNewOpp((p) => ({ ...p, notes: e.target.value }))} className="rounded-xl" rows={2} />
             </div>
-
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Purpose</Label>
@@ -699,12 +1042,7 @@ const Pipeline = () => {
               </div>
               <div className="space-y-2">
                 <Label>Financial Year</Label>
-                <Input
-                  placeholder="e.g. 2026-2027"
-                  value={newOpp.financialYear}
-                  onChange={(e) => setNewOpp((p) => ({ ...p, financialYear: e.target.value }))}
-                  className="rounded-xl"
-                />
+                <Input placeholder="e.g. 2026-2027" value={newOpp.financialYear} onChange={(e) => setNewOpp((p) => ({ ...p, financialYear: e.target.value }))} className="rounded-xl" />
               </div>
             </div>
           </div>
@@ -718,204 +1056,119 @@ const Pipeline = () => {
       </Dialog>
 
       {/* Awarded Dialog */}
-      <Dialog
-        open={pendingMove?.toStatus === "awarded"}
-        onOpenChange={(open) => { if (!open) cancelPendingMove(); }}
-      >
+      <Dialog open={pendingMove?.toStatus === "awarded"} onOpenChange={(open) => { if (!open) cancelPendingMove(); }}>
         <DialogContent className="rounded-xl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <PartyPopper className="h-5 w-5 text-success" /> Congratulations!
-            </DialogTitle>
-            <DialogDescription>
-              {pendingMove?.opp.funderName} — {pendingMove?.opp.programName}. Enter the award details.
-            </DialogDescription>
+            <DialogTitle className="flex items-center gap-2"><PartyPopper className="h-5 w-5 text-success" /> Congratulations!</DialogTitle>
+            <DialogDescription>{pendingMove?.opp.funderName} — {pendingMove?.opp.programName}. Enter the award details.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label>Amount Awarded (£) *</Label>
-              <Input
-                type="number"
-                value={awardedForm.amountAwarded}
-                onChange={(e) => setAwardedForm((p) => ({ ...p, amountAwarded: e.target.value }))}
-                className="rounded-xl"
-              />
+              <Input type="number" value={awardedForm.amountAwarded} onChange={(e) => setAwardedForm((p) => ({ ...p, amountAwarded: e.target.value }))} className="rounded-xl" />
             </div>
             <div className="space-y-2">
               <Label>Funding Expiration Date *</Label>
-              <Input
-                type="date"
-                value={awardedForm.expirationDate}
-                onChange={(e) => setAwardedForm((p) => ({ ...p, expirationDate: e.target.value }))}
-                className="rounded-xl"
-              />
+              <Input type="date" value={awardedForm.expirationDate} onChange={(e) => setAwardedForm((p) => ({ ...p, expirationDate: e.target.value }))} className="rounded-xl" />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Tranches</Label>
-                <Input
-                  type="number"
-                  placeholder="e.g. 1"
-                  value={awardedForm.tranches}
-                  onChange={(e) => setAwardedForm((p) => ({ ...p, tranches: e.target.value }))}
-                  className="rounded-xl"
-                />
+                <Input type="number" placeholder="e.g. 1" value={awardedForm.tranches} onChange={(e) => setAwardedForm((p) => ({ ...p, tranches: e.target.value }))} className="rounded-xl" />
               </div>
               <div className="space-y-2">
                 <Label>Date Funding Received</Label>
-                <Input
-                  type="date"
-                  value={awardedForm.dateFundingReceived}
-                  onChange={(e) => setAwardedForm((p) => ({ ...p, dateFundingReceived: e.target.value }))}
-                  className="rounded-xl"
-                />
+                <Input type="date" value={awardedForm.dateFundingReceived} onChange={(e) => setAwardedForm((p) => ({ ...p, dateFundingReceived: e.target.value }))} className="rounded-xl" />
               </div>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={cancelPendingMove} className="rounded-xl" disabled={submitting}>Cancel</Button>
-            <Button onClick={submitAwarded} className="rounded-xl" disabled={submitting}>
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}
-            </Button>
+            <Button onClick={submitAwarded} className="rounded-xl" disabled={submitting}>{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Rejected Dialog */}
-      <Dialog
-        open={pendingMove?.toStatus === "rejected"}
-        onOpenChange={(open) => { if (!open) cancelPendingMove(); }}
-      >
+      <Dialog open={pendingMove?.toStatus === "rejected"} onOpenChange={(open) => { if (!open) cancelPendingMove(); }}>
         <DialogContent className="rounded-xl">
           <DialogHeader>
             <DialogTitle>Mark as Rejected</DialogTitle>
-            <DialogDescription>
-              When can we reapply? The opportunity will reappear as "Identified" after that date.
-            </DialogDescription>
+            <DialogDescription>When can we reapply? The opportunity will reappear as "Identified" after that date.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label>Reapplication Date *</Label>
-              <Input
-                type="date"
-                value={rejectedForm.reapplicationDate}
-                onChange={(e) => setRejectedForm((p) => ({ ...p, reapplicationDate: e.target.value }))}
-                className="rounded-xl"
-              />
+              <Input type="date" value={rejectedForm.reapplicationDate} onChange={(e) => setRejectedForm((p) => ({ ...p, reapplicationDate: e.target.value }))} className="rounded-xl" />
             </div>
             <div className="space-y-2">
               <Label>Funder Feedback</Label>
-              <Textarea
-                placeholder="Any feedback from the funder (optional)"
-                value={rejectedForm.feedback}
-                onChange={(e) => setRejectedForm((p) => ({ ...p, feedback: e.target.value }))}
-                className="rounded-xl"
-                rows={3}
-              />
+              <Textarea placeholder="Any feedback from the funder (optional)" value={rejectedForm.feedback} onChange={(e) => setRejectedForm((p) => ({ ...p, feedback: e.target.value }))} className="rounded-xl" rows={3} />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={cancelPendingMove} className="rounded-xl" disabled={submitting}>Cancel</Button>
-            <Button onClick={submitRejected} className="rounded-xl" disabled={submitting}>
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}
-            </Button>
+            <Button onClick={submitRejected} className="rounded-xl" disabled={submitting}>{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Funds Received Dialog */}
-      <Dialog
-        open={pendingMove?.toStatus === "funds_received"}
-        onOpenChange={(open) => { if (!open) cancelPendingMove(); }}
-      >
+      <Dialog open={pendingMove?.toStatus === "funds_received"} onOpenChange={(open) => { if (!open) cancelPendingMove(); }}>
         <DialogContent className="rounded-xl">
           <DialogHeader>
             <DialogTitle>Record Funds Received</DialogTitle>
-            <DialogDescription>
-              {pendingMove?.opp.funderName} — {pendingMove?.opp.programName}. When did the money land in the bank?
-            </DialogDescription>
+            <DialogDescription>{pendingMove?.opp.funderName} — {pendingMove?.opp.programName}. When did the money land in the bank?</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label>Date Funding Received *</Label>
-              <Input
-                type="date"
-                value={fundsReceivedForm.dateFundingReceived}
-                onChange={(e) => setFundsReceivedForm({ dateFundingReceived: e.target.value })}
-                className="rounded-xl"
-              />
+              <Input type="date" value={fundsReceivedForm.dateFundingReceived} onChange={(e) => setFundsReceivedForm({ dateFundingReceived: e.target.value })} className="rounded-xl" />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={cancelPendingMove} className="rounded-xl" disabled={submitting}>Cancel</Button>
-            <Button onClick={submitFundsReceived} className="rounded-xl" disabled={submitting}>
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}
-            </Button>
+            <Button onClick={submitFundsReceived} className="rounded-xl" disabled={submitting}>{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Submitted Dialog */}
-      <Dialog
-        open={pendingMove?.toStatus === "submitted"}
-        onOpenChange={(open) => { if (!open) cancelPendingMove(); }}
-      >
+      <Dialog open={pendingMove?.toStatus === "submitted"} onOpenChange={(open) => { if (!open) cancelPendingMove(); }}>
         <DialogContent className="rounded-xl">
           <DialogHeader>
             <DialogTitle>Mark as Submitted</DialogTitle>
-            <DialogDescription>
-              Submission date will be recorded as today. Optionally note when you expect a decision.
-            </DialogDescription>
+            <DialogDescription>Submission date will be recorded as today. Optionally note when you expect a decision.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label>Expected Results Date</Label>
-              <Input
-                type="date"
-                value={submittedForm.expectedResultsDate}
-                onChange={(e) => setSubmittedForm({ expectedResultsDate: e.target.value })}
-                className="rounded-xl"
-              />
+              <Input type="date" value={submittedForm.expectedResultsDate} onChange={(e) => setSubmittedForm({ expectedResultsDate: e.target.value })} className="rounded-xl" />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={cancelPendingMove} className="rounded-xl" disabled={submitting}>Cancel</Button>
-            <Button onClick={submitSubmitted} className="rounded-xl" disabled={submitting}>
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}
-            </Button>
+            <Button onClick={submitSubmitted} className="rounded-xl" disabled={submitting}>{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Dismissed Dialog */}
-      <Dialog
-        open={pendingMove?.toStatus === "dismissed"}
-        onOpenChange={(open) => { if (!open) cancelPendingMove(); }}
-      >
+      <Dialog open={pendingMove?.toStatus === "dismissed"} onOpenChange={(open) => { if (!open) cancelPendingMove(); }}>
         <DialogContent className="rounded-xl">
           <DialogHeader>
             <DialogTitle>Dismiss Opportunity</DialogTitle>
-            <DialogDescription>
-              Dismissed opportunities are kept for reference but excluded from counts and active funding.
-            </DialogDescription>
+            <DialogDescription>Dismissed opportunities are kept for reference but excluded from counts and active funding.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label>Reason for dismissal *</Label>
-              <Textarea
-                placeholder="Why are we dropping this opportunity?"
-                value={dismissedForm.dismissalReason}
-                onChange={(e) => setDismissedForm({ dismissalReason: e.target.value })}
-                className="rounded-xl"
-                rows={3}
-              />
+              <Textarea placeholder="Why are we dropping this opportunity?" value={dismissedForm.dismissalReason} onChange={(e) => setDismissedForm({ dismissalReason: e.target.value })} className="rounded-xl" rows={3} />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={cancelPendingMove} className="rounded-xl" disabled={submitting}>Cancel</Button>
-            <Button onClick={submitDismissed} className="rounded-xl" disabled={submitting}>
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}
-            </Button>
+            <Button onClick={submitDismissed} className="rounded-xl" disabled={submitting}>{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
