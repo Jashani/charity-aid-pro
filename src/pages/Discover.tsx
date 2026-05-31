@@ -356,14 +356,22 @@ function OpportunityCard({
   getScoreColor: (score: number) => string;
   onDetails: () => void;
 }) {
+  const days = daysUntil(opp.deadline);
+  const isExpired = opp.deadline ? days < 0 : false;
+
   return (
-    <Card className="hover:shadow-md transition-shadow rounded-xl cursor-pointer" onClick={onDetails}>
+    <Card className={`hover:shadow-md transition-shadow rounded-xl cursor-pointer ${isExpired ? "opacity-70" : ""}`} onClick={onDetails}>
       <CardContent className="p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0 space-y-2">
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="font-semibold text-base">{opp.funderName}</h3>
+                {isExpired && (
+                  <Badge variant="outline" className="text-xs rounded-full text-destructive border-destructive/40">
+                    Deadline passed
+                  </Badge>
+                )}
               </div>
               <p className="text-sm text-muted-foreground">{opp.programName}</p>
             </div>
@@ -390,7 +398,7 @@ function OpportunityCard({
                 <span className="text-muted-foreground font-normal"> – {formatCurrency(opp.amountMax)}</span>
               )}
             </p>
-            <div className="flex items-center gap-1 text-xs text-muted-foreground justify-end">
+            <div className={`flex items-center gap-1 text-xs justify-end ${isExpired ? "text-destructive" : "text-muted-foreground"}`}>
               <Clock className="h-3 w-3" />
               {daysUntil(opp.deadline)}d left
             </div>

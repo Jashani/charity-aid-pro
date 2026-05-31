@@ -652,7 +652,9 @@ const Pipeline = () => {
                                 <span className="text-muted-foreground">results {opp.expectedResultsDate}</span>
                               ) : opp.status === "funds_received" && opp.dateFundingReceived ? (
                                 <span className="text-muted-foreground">received {opp.dateFundingReceived}</span>
-                              ) : opp.status === "dismissed" || opp.status === "on_hold" ? null : (
+                              ) : opp.status === "dismissed" || opp.status === "on_hold" ? null : opp.deadline && daysUntil(opp.deadline) < 0 ? (
+                                <span className="text-destructive font-medium">Deadline passed</span>
+                              ) : (
                                 <span className="text-muted-foreground">{daysUntil(opp.deadline)}d left</span>
                               )}
                             </div>
