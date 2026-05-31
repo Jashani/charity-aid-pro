@@ -25,6 +25,13 @@ function mapRow(row: Record<string, unknown>): FundingOpportunity {
     amountAwarded: row.amount_awarded != null ? Number(row.amount_awarded) : undefined,
     dismissalReason: row.dismissal_reason != null ? String(row.dismissal_reason) : undefined,
     reapplicationDate: row.reapplication_date != null ? String(row.reapplication_date) : undefined,
+    submissionDate: row.submission_date != null ? String(row.submission_date) : undefined,
+    expectedResultsDate: row.expected_results_date != null ? String(row.expected_results_date) : undefined,
+    dateFundingReceived: row.date_funding_received != null ? String(row.date_funding_received) : undefined,
+    tranches: row.tranches != null ? Number(row.tranches) : undefined,
+    purpose: row.purpose != null ? String(row.purpose) : undefined,
+    feedback: row.feedback != null ? String(row.feedback) : undefined,
+    financialYear: row.financial_year != null ? String(row.financial_year) : undefined,
   };
 }
 

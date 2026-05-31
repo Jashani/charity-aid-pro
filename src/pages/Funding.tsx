@@ -191,7 +191,25 @@ const Funding = () => {
                     <p className="text-xs text-muted-foreground">End Date</p>
                     <p className="text-sm font-bold">{new Date(selectedFund.endDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
                   </div>
+                  {selectedFund.dateFundingReceived && (
+                    <div className="rounded-xl bg-muted/50 p-3">
+                      <p className="text-xs text-muted-foreground">Funds Received</p>
+                      <p className="text-sm font-bold">{new Date(selectedFund.dateFundingReceived).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
+                    </div>
+                  )}
+                  {selectedFund.tranches != null && (
+                    <div className="rounded-xl bg-muted/50 p-3">
+                      <p className="text-xs text-muted-foreground">Tranches</p>
+                      <p className="text-sm font-bold">{selectedFund.tranches}</p>
+                    </div>
+                  )}
                 </div>
+                {(selectedFund.purpose || selectedFund.financialYear) && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {selectedFund.purpose && <Badge variant="outline" className="rounded-full text-xs capitalize">{selectedFund.purpose.replace("_", " & ")}</Badge>}
+                    {selectedFund.financialYear && <Badge variant="outline" className="rounded-full text-xs">FY {selectedFund.financialYear}</Badge>}
+                  </div>
+                )}
                 {selectedFund.notes && (
                   <div>
                     <p className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1"><FileText className="h-3 w-3" /> Notes</p>

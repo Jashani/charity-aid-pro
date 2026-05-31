@@ -1,5 +1,5 @@
 export type FundingType = 'grant' | 'trust' | 'lottery' | 'corporate' | 'government';
-export type OpportunityStatus = 'identified' | 'researching' | 'applying' | 'submitted' | 'awarded' | 'rejected' | 'dismissed';
+export type OpportunityStatus = 'identified' | 'on_hold' | 'researching' | 'applying' | 'submitted' | 'awarded' | 'funds_received' | 'rejected' | 'dismissed';
 
 import type { GatingResult, ScoringBreakdown } from './database.types';
 
@@ -28,6 +28,13 @@ export interface FundingOpportunity {
   gating?: GatingResult | null;
   scores?: ScoringBreakdown | null;
   scored_at?: string;
+  submissionDate?: string;
+  expectedResultsDate?: string;
+  dateFundingReceived?: string;
+  tranches?: number;
+  purpose?: string;
+  feedback?: string;
+  financialYear?: string;
 }
 
 export interface ActiveFunding {
@@ -40,6 +47,10 @@ export interface ActiveFunding {
   type: FundingType;
   renewalEligible: boolean;
   notes: string;
+  dateFundingReceived?: string;
+  tranches?: number;
+  purpose?: string;
+  financialYear?: string;
 }
 
 export interface FunderContact {
@@ -73,9 +84,10 @@ export function formatCurrency(amount: number): string {
 }
 
 export function daysUntil(dateStr: string): number {
+  if (!dateStr) return 0;
   const target = new Date(dateStr);
-  const now = new Date();
-  return Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  if (isNaN(target.getTime())) return 0;
+  return Math.ceil((target.getTime() - Date.now()) / 86400000);
 }
 
 export function getFundingProgress(startDate: string, endDate: string): number {
