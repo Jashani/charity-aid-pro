@@ -84,9 +84,10 @@ export function formatCurrency(amount: number): string {
 }
 
 export function daysUntil(dateStr: string): number {
+  if (!dateStr) return 0;
   const target = new Date(dateStr);
-  const now = new Date();
-  return Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  if (isNaN(target.getTime())) return 0;
+  return Math.ceil((target.getTime() - Date.now()) / 86400000);
 }
 
 export function getFundingProgress(startDate: string, endDate: string): number {
