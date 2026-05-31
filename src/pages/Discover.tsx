@@ -258,7 +258,11 @@ const Discover = () => {
                   </div>
                   <div className="rounded-xl bg-muted/50 p-3">
                     <p className="text-xs text-muted-foreground">Deadline</p>
-                    <p className="text-sm font-bold">{new Date(selectedOpp.deadline).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
+                    <p className="text-sm font-bold">
+                      {selectedOpp.deadline
+                        ? new Date(selectedOpp.deadline).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+                        : "No deadline specified"}
+                    </p>
                   </div>
                   <div className="rounded-xl bg-muted/50 p-3">
                     <p className="text-xs text-muted-foreground">Duration</p>
@@ -400,7 +404,7 @@ function OpportunityCard({
             </p>
             <div className={`flex items-center gap-1 text-xs justify-end ${isExpired ? "text-destructive" : "text-muted-foreground"}`}>
               <Clock className="h-3 w-3" />
-              {daysUntil(opp.deadline)}d left
+              {!opp.deadline ? "No deadline specified" : `${daysUntil(opp.deadline)}d left`}
             </div>
             </div>
         </div>
