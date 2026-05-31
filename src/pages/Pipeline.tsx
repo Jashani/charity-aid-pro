@@ -617,7 +617,7 @@ const Pipeline = () => {
                       isDragOver ? "bg-primary/5 ring-2 ring-primary/20" : "bg-muted/20"
                     }`}
                   >
-                    <ScrollArea className="h-[420px]">
+                    <div className="h-[420px] overflow-y-auto overflow-x-hidden">
                       <div className="p-2 space-y-2">
                         {items.map((opp) => (
                           <div
@@ -625,7 +625,7 @@ const Pipeline = () => {
                             draggable
                             onDragStart={() => handleDragStart(opp.id)}
                             onClick={() => handleCardClick(opp)}
-                            className={`group rounded-xl border bg-card p-3 space-y-2 cursor-pointer transition-all hover:shadow-md hover:border-primary/30 ${
+                            className={`group rounded-xl border bg-card p-3 space-y-2 cursor-pointer transition-all hover:shadow-md hover:border-primary/30 overflow-hidden ${
                               draggedId === opp.id ? "opacity-40 scale-95" : ""
                             }`}
                           >
@@ -635,7 +635,7 @@ const Pipeline = () => {
                                 onMouseDown={(e) => e.stopPropagation()}
                               />
                               <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium leading-tight">{opp.funderName}</p>
+                                <p className="text-sm font-medium leading-tight truncate">{opp.funderName}</p>
                                 <p className="text-xs text-muted-foreground mt-0.5 truncate">{opp.programName}</p>
                               </div>
                               <Pencil className="h-3 w-3 text-muted-foreground/0 group-hover:text-muted-foreground/50 transition-colors shrink-0 mt-0.5" />
@@ -680,7 +680,7 @@ const Pipeline = () => {
                           </div>
                         )}
                       </div>
-                    </ScrollArea>
+                    </div>
                   </div>
                 )}
 
