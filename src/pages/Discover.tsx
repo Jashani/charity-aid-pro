@@ -1,8 +1,10 @@
 import { useState, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import {
@@ -20,9 +22,12 @@ import {
   Globe,
   FileText,
   Loader2,
+  XCircle,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useOpportunities } from "@/hooks/useOpportunities";
+import { supabase } from "@/lib/supabaseClient";
+import { toast } from "sonner";
 import {
   formatCurrency,
   daysUntil,
@@ -30,6 +35,7 @@ import {
 } from "@/lib/mock-data";
 
 const Discover = () => {
+  const queryClient = useQueryClient();
   const { data: allOpportunities = [], isLoading } = useOpportunities();
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
@@ -38,6 +44,32 @@ const Discover = () => {
   const [amountRange, setAmountRange] = useState([0, 300000]);
   const [showFilters, setShowFilters] = useState(false);
   const [selectedOpp, setSelectedOpp] = useState<FundingOpportunity | null>(null);
+  const [showDismissReason, setShowDismissReason] = useState(false);
+  const [dismissReason, setDismissReason] = useState("");
+  const [dismissSubmitting, setDismissSubmitting] = useState(false);
+
+  const closeDialog = () => {
+    setSelectedOpp(null);
+    setShowDismissReason(false);
+    setDismissReason("");
+  };
+
+  const handleDismiss = async () => {
+    if (!selectedOpp || !supabase) return;
+    setDismissSubmitting(true);
+    const { error } = await supabase
+      .from("opportunities")
+      .update({ status: "dismissed", dismissal_reason: dismissReason || null, updated_at: new Date().toISOString() })
+      .eq("id", selectedOpp.id);
+    setDismissSubmitting(false);
+    if (error) {
+      toast.error("Failed to dismiss opportunity");
+      return;
+    }
+    toast.success("Opportunity dismissed");
+    queryClient.invalidateQueries({ queryKey: ["opportunities"] });
+    closeDialog();
+  };
 
   const locations = useMemo(
     () => [...new Set(allOpportunities.map((o) => o.location))],
@@ -205,7 +237,7 @@ const Discover = () => {
       </div>
 
       {/* Detail Dialog */}
-      <Dialog open={!!selectedOpp} onOpenChange={() => setSelectedOpp(null)}>
+      <Dialog open={!!selectedOpp} onOpenChange={closeDialog}>
         <DialogContent className="rounded-xl max-w-lg">
           {selectedOpp && (
             <>
@@ -265,6 +297,45 @@ const Discover = () => {
                     <Globe className="h-4 w-4" /> Visit Funder Website
                   </Button>
                 )}
+
+                <div className="border-t pt-3 space-y-2">
+                  {!showDismissReason ? (
+                    <Button
+                      variant="ghost"
+                      className="w-full rounded-xl gap-2 text-muted-foreground hover:text-destructive"
+                      onClick={() => setShowDismissReason(true)}
+                    >
+                      <XCircle className="h-4 w-4" /> Dismiss this opportunity
+                    </Button>
+                  ) : (
+                    <>
+                      <Textarea
+                        placeholder="Reason for dismissing (optional)"
+                        value={dismissReason}
+                        onChange={(e) => setDismissReason(e.target.value)}
+                        className="rounded-xl text-sm resize-none"
+                        rows={2}
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          variant="destructive"
+                          className="flex-1 rounded-xl"
+                          onClick={handleDismiss}
+                          disabled={dismissSubmitting}
+                        >
+                          {dismissSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm Dismiss"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="rounded-xl"
+                          onClick={() => { setShowDismissReason(false); setDismissReason(""); }}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             </>
           )}
