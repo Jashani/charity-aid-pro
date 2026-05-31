@@ -23,7 +23,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { GripVertical, Plus, ChevronDown, ChevronUp, Loader2, PartyPopper, Pencil } from "lucide-react";
+import { GripVertical, Plus, ChevronDown, ChevronUp, Loader2, PartyPopper, Pencil, ExternalLink } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { toast } from "sonner";
 import { useOpportunities } from "@/hooks/useOpportunities";
@@ -864,12 +864,28 @@ const Pipeline = () => {
 
               <div className="space-y-2">
                 <Label>Website</Label>
-                <Input
-                  placeholder="https://..."
-                  value={editForm.website}
-                  onChange={(e) => setEditForm((p) => ({ ...p, website: e.target.value }))}
-                  className="rounded-xl"
-                />
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="https://..."
+                    value={editForm.website}
+                    onChange={(e) => setEditForm((p) => ({ ...p, website: e.target.value }))}
+                    className="rounded-xl"
+                  />
+                  {editForm.website && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="rounded-xl shrink-0"
+                      onClick={() => {
+                        const url = editForm.website;
+                        window.open(/^https?:\/\//i.test(url) ? url : `https://${url}`, "_blank");
+                      }}
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
               </div>
 
               <div className="space-y-1 pt-1">

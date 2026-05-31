@@ -297,7 +297,14 @@ const Discover = () => {
                 </div>
 
                 {selectedOpp.website && (
-                  <Button variant="outline" className="w-full rounded-xl gap-2" onClick={() => window.open(selectedOpp.website, "_blank")}>
+                  <Button
+                    variant="outline"
+                    className="w-full rounded-xl gap-2"
+                    onClick={() => {
+                      const url = selectedOpp.website;
+                      window.open(/^https?:\/\//i.test(url) ? url : `https://${url}`, "_blank");
+                    }}
+                  >
                     <Globe className="h-4 w-4" /> Visit Funder Website
                   </Button>
                 )}
