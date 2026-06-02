@@ -30,7 +30,7 @@ _AUTHORITY = "https://login.microsoftonline.com/consumers"
 # Mail.ReadWrite — needed to flip isRead=true on processed messages, which is
 # how the cron pipeline knows what's already been handled. Mail.Read alone
 # would cause mark_as_read to 403 and break the watermark.
-_SCOPES = ["Mail.ReadWrite"]
+_SCOPES = ["Mail.ReadWrite", "Mail.Send"]
 _GRAPH_INBOX = "https://graph.microsoft.com/v1.0/me/mailFolders/Inbox/messages"
 
 _markitdown = MarkItDown()

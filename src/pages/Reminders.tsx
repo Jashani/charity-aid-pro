@@ -17,6 +17,10 @@ import { Bell, Mail, Clock, RefreshCw, CalendarCheck, Newspaper, Eye, X, Loader2
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { toast } from "sonner";
 import { useReminderRules } from "@/hooks/useReminderRules";
+import { useReminderRecipients } from "@/hooks/useReminderRecipients";
+import { useUpdateReminderRule } from "@/hooks/useUpdateReminderRule";
+import { useAddReminderRecipient } from "@/hooks/useAddReminderRecipient";
+import { useRemoveReminderRecipient } from "@/hooks/useRemoveReminderRecipient";
 import { type ReminderRule } from "@/lib/mock-data";
 
 const typeIcons: Record<string, React.ReactNode> = {
@@ -26,25 +30,32 @@ const typeIcons: Record<string, React.ReactNode> = {
   digest: <Newspaper className="h-5 w-5 text-muted-foreground" />,
 };
 
-interface Recipient {
-  email: string;
-  label: string;
-  type: string;
+function formatTiming(rule: ReminderRule): string {
+  if (rule.cadence === "before_deadline" && rule.offsetsDays.length > 0) {
+    const sorted = [...rule.offsetsDays].sort((a, b) => b - a);
+    return `${sorted.join(", ")} days before deadline`;
+  }
+  return "";
 }
 
 const Reminders = () => {
-  const { data: fetchedRules = [], isLoading } = useReminderRules();
-  const [rules, setRules] = useState<ReminderRule[]>([]);
-  const [hasInitialized, setHasInitialized] = useState(false);
+  const { data: rules = [], isLoading: rulesLoading } = useReminderRules();
+  const { data: recipients = [], isLoading: recipientsLoading } = useReminderRecipients();
+  const updateRule = useUpdateReminderRule();
+  const addRecipient = useAddReminderRecipient();
+  const removeRecipient = useRemoveReminderRecipient();
+
   const [showPreview, setShowPreview] = useState(false);
   const [showAddRecipient, setShowAddRecipient] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [newLabel, setNewLabel] = useState("");
-  const [recipients, setRecipients] = useState<Recipient[]>([]);
 
-  const toggleRule = (id: string) => {
-    setRules((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r))
+  const isLoading = rulesLoading || recipientsLoading;
+
+  const toggleRule = (rule: ReminderRule) => {
+    updateRule.mutate(
+      { id: rule.id, enabled: !rule.enabled },
+      { onError: (err) => toast.error(`Failed to update rule: ${err.message}`) },
     );
   };
 
@@ -53,25 +64,28 @@ const Reminders = () => {
       toast.error("Please enter a valid email address");
       return;
     }
-    setRecipients((prev) => [...prev, { email: newEmail, label: newLabel || "General", type: "Active" }]);
-    setShowAddRecipient(false);
-    setNewEmail("");
-    setNewLabel("");
-    toast.success(`${newEmail} added as recipient`);
+    addRecipient.mutate(
+      { email: newEmail, label: newLabel },
+      {
+        onSuccess: () => {
+          setShowAddRecipient(false);
+          setNewEmail("");
+          setNewLabel("");
+          toast.success(`${newEmail.trim().toLowerCase()} added as recipient`);
+        },
+        onError: (err) => toast.error(`Failed to add recipient: ${err.message}`),
+      },
+    );
   };
 
-  const removeRecipient = (email: string) => {
-    setRecipients((prev) => prev.filter((r) => r.email !== email));
-    toast.success("Recipient removed");
+  const handleRemoveRecipient = (id: string) => {
+    removeRecipient.mutate(id, {
+      onSuccess: () => toast.success("Recipient removed"),
+      onError: (err) => toast.error(`Failed to remove recipient: ${err.message}`),
+    });
   };
 
-  // Sync fetched data into local state (only on first load)
-  if (!hasInitialized && fetchedRules.length > 0) {
-    setRules(fetchedRules);
-    setHasInitialized(true);
-  }
-
-  if (isLoading && !hasInitialized) {
+  if (isLoading) {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center h-[60vh]">
@@ -101,7 +115,7 @@ const Reminders = () => {
         <div className="space-y-2">
           {rules.map((rule) => (
             <div key={rule.id} className="flex items-center gap-4 rounded-xl border p-4 hover:bg-muted/30 transition-colors">
-              <div className="shrink-0">{typeIcons[rule.type]}</div>
+              <div className="shrink-0">{typeIcons[rule.type] ?? typeIcons.deadline}</div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <p className="font-medium text-sm">{rule.name}</p>
@@ -109,13 +123,17 @@ const Reminders = () => {
                 </div>
                 <p className="text-sm text-muted-foreground mt-0.5">{rule.description}</p>
                 <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {rule.timing}</span>
+                  <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {formatTiming(rule)}</span>
                   {rule.lastSent && (
                     <span>Last: {new Date(rule.lastSent).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
                   )}
                 </div>
               </div>
-              <Switch checked={rule.enabled} onCheckedChange={() => toggleRule(rule.id)} />
+              <Switch
+                checked={rule.enabled}
+                onCheckedChange={() => toggleRule(rule)}
+                disabled={updateRule.isPending}
+              />
             </div>
           ))}
         </div>
@@ -128,15 +146,26 @@ const Reminders = () => {
             <CardDescription>Where notifications are sent.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
+            {recipients.length === 0 && (
+              <p className="text-sm text-muted-foreground py-2">No recipients yet. Add one to start receiving reminders.</p>
+            )}
             {recipients.map((r) => (
-              <div key={r.email} className="flex items-center justify-between rounded-xl border p-3">
+              <div key={r.id} className="flex items-center justify-between rounded-xl border p-3">
                 <div>
                   <p className="text-sm font-medium">{r.email}</p>
-                  <p className="text-xs text-muted-foreground">{r.label}</p>
+                  {r.label && <p className="text-xs text-muted-foreground">{r.label}</p>}
                 </div>
                 <div className="flex items-center gap-2">
-                  <Badge variant={r.type === "Active" ? "default" : "secondary"} className="rounded-full">{r.type}</Badge>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeRecipient(r.email)}>
+                  <Badge variant={r.enabled ? "default" : "secondary"} className="rounded-full">
+                    {r.enabled ? "Active" : "Disabled"}
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => handleRemoveRecipient(r.id)}
+                    disabled={removeRecipient.isPending}
+                  >
                     <X className="h-3.5 w-3.5" />
                   </Button>
                 </div>
@@ -208,7 +237,9 @@ const Reminders = () => {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddRecipient(false)} className="rounded-xl">Cancel</Button>
-            <Button onClick={handleAddRecipient} className="rounded-xl">Add Recipient</Button>
+            <Button onClick={handleAddRecipient} className="rounded-xl" disabled={addRecipient.isPending}>
+              Add Recipient
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
