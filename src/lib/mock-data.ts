@@ -70,12 +70,20 @@ export interface FunderContact {
 
 export interface ReminderRule {
   id: string;
-  type: 'deadline' | 'renewal' | 're-eligibility' | 'digest';
+  type: string;
   name: string;
   description: string;
-  timing: string;
+  cadence: 'before_deadline';
+  offsetsDays: number[];
   enabled: boolean;
   lastSent?: string;
+}
+
+export interface ReminderRecipient {
+  id: string;
+  email: string;
+  label: string;
+  enabled: boolean;
 }
 
 // --- Helper functions ---

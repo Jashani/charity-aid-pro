@@ -5,12 +5,13 @@ import { type ReminderRule } from '@/lib/mock-data';
 function mapRow(row: Record<string, unknown>): ReminderRule {
   return {
     id: String(row.id ?? ''),
-    type: (row.type as ReminderRule['type']) ?? 'deadline',
+    type: String(row.type ?? 'deadline'),
     name: String(row.name ?? ''),
     description: String(row.description ?? ''),
-    timing: String(row.timing ?? ''),
+    cadence: (row.cadence as ReminderRule['cadence']) ?? 'before_deadline',
+    offsetsDays: Array.isArray(row.offsets_days) ? (row.offsets_days as number[]) : [],
     enabled: Boolean(row.enabled ?? true),
-    lastSent: row.lastSent != null ? String(row.lastSent) : (row.last_sent != null ? String(row.last_sent) : undefined),
+    lastSent: row.last_sent != null ? String(row.last_sent) : undefined,
   };
 }
 
@@ -23,7 +24,7 @@ async function fetchReminderRules(): Promise<ReminderRule[]> {
   const { data, error } = await supabase
     .from('reminder_rules')
     .select('*')
-    .order('type', { ascending: true });
+    .order('id', { ascending: true });
 
   if (error) {
     console.error('[useReminderRules] Supabase query failed:', error.message);

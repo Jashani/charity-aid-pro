@@ -1,0 +1,55 @@
+name: Email reminders
+
+on:
+  schedule:
+    # 10:00 UTC daily — one hour after the parsing pipeline so today's
+    # newly-parsed opportunities are included.
+    - cron: "0 10 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Log intended sends without contacting Graph or writing log rows"
+        type: boolean
+        default: false
+      rule_id:
+        description: "Limit to a single rule id (blank = all enabled rules)"
+        default: ""
+        required: false
+
+# Independent group — parsing and reminders don't block each other.
+concurrency:
+  group: reminders
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: email_parsing/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r email_parsing/requirements.txt
+
+      - name: Run reminders
+        env:
+          MSAL_TOKEN_CACHE_B64: ${{ secrets.MSAL_TOKEN_CACHE_B64 }}
+          MSAL_CLIENT_ID:       ${{ vars.MSAL_CLIENT_ID }}
+          SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY:         ${{ secrets.SUPABASE_KEY }}
+        run: |
+          DRY_FLAG=""
+          RULE_FLAG=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            [ "${{ github.event.inputs.dry_run }}" = "true" ] && DRY_FLAG="--dry-run"
+            [ -n "${{ github.event.inputs.rule_id }}" ] && RULE_FLAG="--rule-id ${{ github.event.inputs.rule_id }}"
+          fi
+          python -m email_parsing.reminders.run $DRY_FLAG $RULE_FLAG
