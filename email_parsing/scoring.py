@@ -5,14 +5,9 @@ Stages, in order, per opportunity:
 1. Geography gate — LLM with keyword fallback.
    Hard-fail short-circuits all further processing.
 
-2. Eligibility gate — LLM with keyword fallback.
-   Checks whether the opportunity fits M4W's themes (music, arts, wellbeing,
-   older people, mental health, disability, isolation, etc.).
-   Hard-fail short-circuits scoring — only clearly irrelevant opportunities
-   are rejected; uncertain cases default to pass=true for human review.
-
-3. Heuristic scores — funding value, strategic fit, effort, probability,
-   strategic value — combined into a weighted final score (0–100).
+2. Combined eligibility + scoring — single LLM call with keyword fallback.
+   Returns pass/fail and a 0–100 score based on mission alignment and value.
+   pass=false (score < 20 or clearly ineligible) → opportunity dismissed.
 """
 
 from __future__ import annotations
@@ -90,9 +85,9 @@ Rules:
         return _geography_keyword_fallback(location)
 
 
-# ── Eligibility ───────────────────────────────────────────────────────────────
+# ── Combined eligibility + scoring ───────────────────────────────────────────
 
-# Aligned with the charity's own keyword list plus common synonyms.
+# Keyword lists retained for the fallback path only.
 ELIGIBILITY_KEYWORDS = (
     "accessible", "accessibility",
     "age", "ageing", "aging", "older people", "older adults", "later life",
@@ -123,10 +118,6 @@ ELIGIBILITY_KEYWORDS = (
     "vulnerable", "vulnerable adults",
 )
 
-# High-confidence sector exclusions used only in the keyword fallback (when the
-# LLM eligibility call is unavailable). Matched case-insensitively against the
-# combined funder name + programme name + description text.
-# Keep this list short and conservative — the primary LLM call handles nuance.
 SECTOR_HARD_FAIL = (
     "forestry", "tree planting", "rewilding", "ecology", "biodiversity",
     "recycling",
@@ -135,97 +126,84 @@ SECTOR_HARD_FAIL = (
 )
 
 
-def _eligibility_keyword_fallback(opp: FundingOpportunity) -> dict[str, Any]:
-    """Heuristic fallback used only when the LLM eligibility call errors."""
-    text = f"{opp.funder_name} {opp.program_name} {opp.description}".lower()
-    original = f"{opp.funder_name} {opp.program_name} {opp.description}"
+def _score_keyword_fallback(opp: FundingOpportunity) -> dict[str, Any]:
+    """Fallback used only when the LLM scoring call errors."""
+    text = f"{opp.funder_name} {opp.program_name} {opp.description}"
+    text_lower = text.lower()
 
-    # STEM must be checked case-sensitively to avoid substring noise ("system",
-    # "eastern", etc.).
-    if "STEM" in original:
-        return {
-            "pass": False,
-            "confidence": 0.8,
-            "reasoning": "Keyword fallback: STEM education sector",
-        }
+    if "STEM" in text:
+        return {"pass": False, "score": 5, "reasoning": "Keyword fallback: STEM education sector"}
 
     for pattern in SECTOR_HARD_FAIL:
-        if pattern in text:
-            return {
-                "pass": False,
-                "confidence": 0.75,
-                "reasoning": f"Keyword fallback: sector mismatch ({pattern})",
-            }
+        if pattern in text_lower:
+            return {"pass": False, "score": 5, "reasoning": f"Keyword fallback: sector mismatch ({pattern})"}
 
-    hits = sum(1 for kw in ELIGIBILITY_KEYWORDS if kw in text)
-    # Default to pass=true when LLM is unavailable — prefer false positives over
-    # false negatives. A human reviewer will see the opportunity regardless.
+    hits = sum(1 for kw in ELIGIBILITY_KEYWORDS if kw in text_lower)
+    score = min(hits * 8, 40)
     return {
         "pass": True,
-        "confidence": round(min(hits / 10, 0.8), 2) if hits else 0.2,
+        "score": score,
         "reasoning": f"LLM unavailable — keyword fallback ({hits} keyword hits)",
     }
 
 
-def _eligibility_with_llm(opp: FundingOpportunity) -> dict[str, Any]:
-    """Primary eligibility gate: LLM semantic check with keyword fallback."""
+def _score_with_llm(opp: FundingOpportunity) -> dict[str, Any]:
+    """Single LLM call: eligibility gate + 0–100 mission-alignment score."""
+    amount_str = f"£{opp.amount:,.0f}"
+    if opp.amount_max and opp.amount_max > opp.amount:
+        amount_str += f"–£{opp.amount_max:,.0f}"
+
     text = f"{opp.funder_name} — {opp.program_name}: {opp.description}"
-    prompt = f"""You are screening a grant for Music4Wellbeing (M4W), a Kent charity running \
-participatory music, singing, and creative arts for isolated older adults, people with \
-disabilities, and those with poor mental health.
+
+    prompt = f"""Score this grant for Music4Wellbeing (M4W), a Kent charity whose mission is: \
+"For the public benefit in South East England, the relief of those in need by reason of \
+physical and/or mental ill health, disability or age, including people with neurodegenerative \
+conditions such as dementia and Parkinson's, and their carers through providing specifically \
+designed, group therapeutic music sessions and associated activities led by experienced \
+therapeutic arts practitioners."
 
 Opportunity: {text}
+Award: {amount_str}
 
-Return JSON only:
-{{"pass": true | false, "confidence": 0.0-1.0, "reasoning": "<one sentence>"}}
+Scoring rubric (0–100 integer):
+0–19  — Ineligible or no alignment. Wrong sector (environment/ecology, STEM, sport \
+facilities, legal/asylum, animal welfare, armed forces, building repair). Charity \
+clearly cannot apply. Set pass=false — will be auto-dismissed.
+20–39 — Weak alignment. Vaguely related or broadly applicable but poor mission fit. \
+Eligible but overlap is peripheral. Low value or highly restrictive terms.
+40–59 — Moderate alignment. Eligible; mission broadly matches — overlaps M4W's \
+activities (music, arts, wellbeing) OR beneficiaries (older adults, disability, \
+mental health) but not strongly both. Modest value (under £10,000).
+60–79 — Good alignment. Clearly eligible. Meaningful overlap with M4W's core work \
+(participatory music, therapeutic arts) or specific beneficiaries (older adults, \
+dementia, Parkinson's, carers, disability, isolation). Reasonable value (£10,000–£30,000).
+80–100 — Excellent, specific alignment. Strong fit with M4W's exact mission — funder \
+seeks therapeutic music/arts for older adults or people with disability/mental ill health. \
+Charity is a strong candidate. High value (£30,000+) or significant strategic value.
 
-pass=true if related to: music, arts, singing, dance, creative activities, wellbeing, \
-mental health, older people, ageing, dementia, Parkinson's, stroke, isolation, loneliness, \
-carers, disability, neurodiversity, intergenerational activities, therapeutic work, \
-disadvantaged communities, or broadly applicable community health/social funding.
+Set pass=false if score ≤ 19 or charity is clearly ineligible regardless of score.
 
-pass=false only if clearly in a different sector: natural environment/ecology/forestry/\
-tree planting, building or property repair, children's schools education, STEM, \
-legal/asylum/migration, electrical recycling, animal welfare, armed forces, or \
-sport/recreation facilities.
+Return JSON only: {{"pass": true|false, "score": <integer 0-100>, "reasoning": "<one sentence>"}}"""
 
-When uncertain, return pass=true — a human reviewer will decide.
-"""
     try:
-        raw = _chat(prompt, stage="eligibility")
-        data = _parse_json(raw, stage="eligibility")
-        if not isinstance(data, dict) or "pass" not in data:
-            raise LLMError("eligibility: missing 'pass'")
+        raw = _chat(prompt, stage="score")
+        data = _parse_json(raw, stage="score")
+        if not isinstance(data, dict) or "pass" not in data or "score" not in data:
+            raise LLMError("score: missing required fields")
         data.setdefault("reasoning", "")
-        data.setdefault("confidence", 0.5)
-        return {
-            "pass": bool(data["pass"]),
-            "confidence": float(data["confidence"]),
-            "reasoning": data["reasoning"],
-        }
+        score = max(0, min(100, int(data["score"])))
+        passed = bool(data["pass"])
+        if score < 20:
+            passed = False
+        return {"pass": passed, "score": score, "reasoning": data["reasoning"]}
     except Exception as exc:
-        logger.warning("Eligibility LLM call failed (%s) — using keyword fallback", exc)
-        return _eligibility_keyword_fallback(opp)
+        logger.warning("Score LLM call failed (%s) — using keyword fallback", exc)
+        return _score_keyword_fallback(opp)
 
 
-# ── Internal score helpers ────────────────────────────────────────────────────
-
-def _funding_value_score(amount: float, amount_max: float | None) -> tuple[int, float]:
-    """Returns (internal_score, amount_used). Only amount_used is persisted."""
-    value = amount_max if amount_max is not None else amount
-    if value >= 30_000:
-        return 10, value
-    if value >= 15_000:
-        return 9, value
-    if value >= 5_000:
-        return 7, value
-    if value >= 2_000:
-        return 5, value
-    return 3, value
-
+# ── Timing helper (used for tags only) ───────────────────────────────────────
 
 def _timing_score(deadline: str) -> int | None:
-    """Urgency score from deadline. Returns None if unknown or expired."""
     if not deadline or deadline == "unknown":
         return None
     try:
@@ -246,64 +224,6 @@ def _timing_score(deadline: str) -> int | None:
     return 2
 
 
-def _heuristic_scores(opp: FundingOpportunity) -> dict[str, dict[str, Any]]:
-    """Compute scoring dimensions (strategic fit, effort, probability, strategic value).
-
-    Eligibility is handled upstream by _eligibility_with_llm; this function
-    only produces the components that feed into the final weighted score.
-    """
-    # Check across all three text fields for better keyword coverage.
-    text = f"{opp.funder_name} {opp.program_name} {opp.description}".lower()
-    funder_type = opp.type
-    amount_max = opp.amount_max if opp.amount_max is not None else opp.amount
-
-    hits = sum(1 for kw in ELIGIBILITY_KEYWORDS if kw in text)
-    strategic_fit = max(1, min(hits * 2, 10))
-
-    if re.search(r"\b(eoi|expression of interest|short form|simple application|one-page)\b", text):
-        effort = 9
-    elif re.search(r"\b(full application|detailed proposal|business plan|theory of change|logic model)\b", text):
-        effort = 3
-    elif funder_type == "government":
-        effort = 3
-    elif funder_type == "trust":
-        effort = 7
-    else:
-        effort = 5
-
-    if amount_max <= 2_000:
-        probability = 7
-    elif amount_max <= 5_000:
-        probability = 5
-    elif amount_max <= 15_000:
-        probability = 4
-    elif amount_max <= 30_000:
-        probability = 6
-    elif amount_max <= 75_000:
-        probability = 2
-    else:
-        probability = 1
-
-    strategic_value = 3
-    if opp.duration_months >= 24:
-        strategic_value += 3
-    if any(s in text for s in ("partnership", "collaboration", "consortium")):
-        strategic_value += 2
-    if any(s in text for s in ("core", "unrestricted")):
-        strategic_value += 2
-    strategic_value = min(strategic_value, 10)
-
-    return {
-        "strategic_fit": {
-            "score": strategic_fit,
-            "reasoning": f"Matched {hits} M4W keywords across name and description",
-        },
-        "effort": {"score": effort, "reasoning": "Inferred from description / funder type"},
-        "probability": {"score": probability, "reasoning": "From grant size band"},
-        "strategic_value": {"score": strategic_value, "reasoning": "From duration / purpose"},
-    }
-
-
 # ── Pipeline entry point ──────────────────────────────────────────────────────
 
 def score_opportunity(opp: FundingOpportunity) -> FundingOpportunity:
@@ -315,76 +235,58 @@ def score_opportunity(opp: FundingOpportunity) -> FundingOpportunity:
         opp.gating = {
             "status": "failed",
             "geography": {"pass": False, "reasoning": geo.get("reasoning", "")},
-            "eligibility": {"pass": False, "confidence": 0, "reasoning": "Skipped — geography hard fail"},
+            "score": {"pass": False, "score": 0, "reasoning": "Skipped — geography hard fail"},
         }
+        opp.score = 0.0
+        opp.final_score = 0.0
         opp.scored_at = datetime.now(timezone.utc)
         return opp
 
-    # 2. Eligibility gate
-    elig = _eligibility_with_llm(opp)
-    if not elig["pass"]:
+    # 2. Combined eligibility + scoring
+    result = _score_with_llm(opp)
+    if not result["pass"]:
         opp.gating = {
             "status": "failed",
             "geography": {"pass": True, "reasoning": geo.get("reasoning", "")},
-            "eligibility": {
-                "pass": False,
-                "confidence": elig.get("confidence", 0),
-                "reasoning": elig.get("reasoning", ""),
-            },
+            "score": result,
         }
+        opp.score = 0.0
+        opp.final_score = 0.0
+        opp.dismissal_reason = result.get("reasoning", "")
+        opp.status = "dismissed"
         opp.scored_at = datetime.now(timezone.utc)
         return opp
 
-    # 3. Heuristic scoring — only reached when both gates pass
-    heur = _heuristic_scores(opp)
-    fv_score, fv_amount = _funding_value_score(opp.amount, opp.amount_max)
-    timing_score = _timing_score(opp.deadline)
-
-    sf_score = heur["strategic_fit"]["score"]
-    effort = heur["effort"]["score"]
-    probability = heur["probability"]["score"]
-    strategic_value = heur["strategic_value"]["score"]
-
-    final_score = round(
-        (
-            sf_score * 0.30
-            + fv_score * 0.35
-            + probability * 0.15
-            + strategic_value * 0.15
-            + effort * 0.05
-        )
-        * 10,
-        1,
-    )
+    # 3. Post-scoring tags — pure heuristics, no LLM
+    timing = _timing_score(opp.deadline)
+    text = f"{opp.funder_name} {opp.program_name} {opp.description}".lower()
+    amount_max = opp.amount_max if opp.amount_max is not None else opp.amount
 
     suggested: list[str] = []
-    if effort >= 8 and (timing_score or 0) >= 8:
+    if (timing or 0) >= 8 and re.search(
+        r"\b(eoi|expression of interest|short form|simple application|one-page)\b", text
+    ):
         suggested.append("Quick Win")
     if opp.duration_months >= 24:
         suggested.append("Multi-Year")
-    if sf_score >= 8 and probability >= 7:
+    if result["score"] >= 80:
         suggested.append("Strong Match")
-    if fv_score >= 9:
+    if amount_max >= 30_000:
         suggested.append("High Value")
 
     opp.gating = {
         "status": "passed",
         "geography": {"pass": True, "reasoning": geo.get("reasoning", "")},
-        "eligibility": {
-            "pass": True,
-            "confidence": elig.get("confidence", 0.5),
-            "reasoning": elig.get("reasoning", ""),
-        },
+        "score": result,
     }
     opp.scores = {
-        "strategic_fit": {"score": sf_score, "reasoning": heur["strategic_fit"]["reasoning"]},
-        "funding_value": {"amount_used": fv_amount},
-        "probability": heur["probability"],
-        "effort": heur["effort"],
-        "strategic_value": heur["strategic_value"],
+        "mission_alignment": {
+            "score": result["score"],
+            "reasoning": result["reasoning"],
+        }
     }
-    opp.final_score = final_score
-    opp.score = final_score
+    opp.score = float(result["score"])
+    opp.final_score = float(result["score"])
     opp.tags = sorted(set(opp.tags + suggested))
     opp.scored_at = datetime.now(timezone.utc)
     return opp
