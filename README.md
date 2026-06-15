@@ -11,25 +11,32 @@ the results to Supabase.
 
 ```
 ┌────────────────────────────┐         ┌──────────────────────────────────────┐
-│  Frontend (React SPA)      │         │  Email pipeline (Python CLI)         │
+│  Frontend (React SPA)      │         │  Python pipelines (two CLIs)         │
 │                            │         │                                      │
 │  - Discover funding        │         │  python -m email_parsing.run         │
 │  - Pipeline (Kanban)       │◀────────│    fetch → parse → score → upsert    │
-│  - Active funding          │  reads  │                                      │
-│  - Reports & analytics     │         │  Runs daily on GitHub Actions cron   │
-│  - Relationships           │         │  (09:00 UTC). Manual dispatch ok.    │
-│  - Reminders               │         │                                      │
+│  - Active funding          │  reads  │    (daily 09:00 UTC)                 │
+│  - Reports & analytics     │         │                                      │
+│  - Relationships           │         │  python -m email_parsing.reminders.run│
+│  - Reminders               │         │    deadline reminders → Graph sendMail│
+│                            │         │    (daily 10:00 UTC)                 │
 └────────────────────────────┘         └──────────────────────────────────────┘
             │                                          │
             │ Supabase JS client                       │ Supabase Python client
             ▼                                          ▼
         ┌──────────────────────────────────────────────────┐
         │            Supabase (Postgres + RLS)             │
-        │            table: opportunities                  │
+        │   opportunities · reminder_rules ·               │
+        │   reminder_recipients · reminder_log             │
         └──────────────────────────────────────────────────┘
 
-Pipeline external services:
-  - Microsoft Graph (personal Outlook, MSAL device-code, Mail.ReadWrite)
+Three GitHub Actions:
+  - email-pipeline.yml  → parse inbox (daily 09:00 UTC)
+  - reminders.yml       → send deadline reminders (daily 10:00 UTC)
+  - deploy-pages.yml    → build + deploy the SPA to GitHub Pages (on push to main)
+
+External services:
+  - Microsoft Graph (personal Outlook, MSAL device-code; Mail.ReadWrite + Mail.Send)
   - Groq (Llama 3.3 70B via OpenAI-compatible endpoint, free tier)
 ```
 
@@ -43,19 +50,26 @@ charity-aid-pro/
 │   ├── components/                   # UI components (shadcn/ui)
 │   ├── pages/                        # Dashboard pages
 │   └── lib/                          # FundingOpportunity types + helpers
-├── email_parsing/                    # Python pipeline (one CLI, no server)
-│   ├── run.py                        # CLI entry point
-│   ├── outlook.py                    # MSAL device-code + Graph fetch
+├── email_parsing/                    # Python pipelines (CLIs, no server)
+│   ├── run.py                        # parse-pipeline CLI entry point
+│   ├── outlook.py                    # MSAL device-code + Graph (fetch + token)
 │   ├── llm.py                        # OpenAI-compatible client + parse()
 │   ├── scoring.py                    # gating + algorithmic + heuristic
 │   ├── storage.py                    # Supabase upsert
 │   ├── schema.py                     # Pydantic models
 │   ├── config.py                     # env vars
 │   ├── prompts/parse.txt             # single classify+extract prompt
+│   ├── reminders/                    # deadline-reminder pipeline
+│   │   ├── run.py                    # reminders CLI entry point
+│   │   ├── mailer.py                 # Graph sendMail wrapper
+│   │   ├── template.py               # HTML email templates
+│   │   └── tests/
 │   └── tests/
-├── supabase/migrations/              # opportunities table schema
+├── supabase/migrations/              # opportunities + reminder tables
 └── .github/workflows/
-    └── email-pipeline.yml            # daily cron job
+    ├── email-pipeline.yml            # parse inbox (daily 09:00 UTC)
+    ├── reminders.yml                 # send reminders (daily 10:00 UTC)
+    └── deploy-pages.yml              # build + deploy SPA to GitHub Pages
 ```
 
 ---
@@ -85,6 +99,15 @@ npm test
 | Reports | Analytics and charts |
 | Relationships | Funder contacts and communication history |
 | Reminders | Email reminder rules and recipients |
+
+### Deployment
+
+`.github/workflows/deploy-pages.yml` builds the SPA (`npm ci && npm run build`)
+and deploys `dist/` to GitHub Pages on every push to `main` (and on manual
+dispatch). It copies `dist/index.html` to `dist/404.html` so client-side
+routes resolve on Pages. Vite inlines `VITE_SUPABASE_*` at build time, so
+those values must be present in the build environment for the deployed site
+to reach Supabase.
 
 ---
 
@@ -204,10 +227,57 @@ rather than blowing up the run.
 
 ---
 
+## Reminders pipeline
+
+A second Python CLI (`python -m email_parsing.reminders.run`) emails deadline
+reminders for active opportunities. It runs on its own daily cron
+(`.github/workflows/reminders.yml`, **10:00 UTC** — one hour after parsing so
+the day's new opportunities are included).
+
+### How it works
+
+For each enabled rule in `reminder_rules` (cadence `before_deadline`) and each
+enabled recipient in `reminder_recipients`:
+
+1. Load active opportunities (`identified`, `on_hold`, `researching`,
+   `applying`, `submitted`) with a future deadline.
+2. For every opportunity whose days-to-deadline equals one of the rule's
+   `offsets_days`, claim a `reminder_log` row. The row's unique constraint is
+   the dedup key, so a reminder is sent **at most once** per
+   (opportunity, rule, recipient, offset).
+3. Send the HTML email via Microsoft Graph `sendMail` (needs the `Mail.Send`
+   scope, already in the cached token). If the send fails, the log claim is
+   rolled back so the next run retries.
+
+The template ([template.py](email_parsing/reminders/template.py)) mirrors the
+preview shown on the Reminders page.
+
+### Local runs
+
+```sh
+export SUPABASE_URL=https://<project>.supabase.co
+export SUPABASE_KEY=<service-role key>
+
+python -m email_parsing.reminders.run --dry-run        # log intended sends only
+python -m email_parsing.reminders.run --rule-id deadline
+python -m email_parsing.reminders.run --test you@example.com   # one fake email
+```
+
+CLI flags: `--dry-run`, `--rule-id ID`, `--test EMAIL`. The cron passes
+neither flag (live send, all rules); manual dispatch can set `dry_run` or
+`rule_id` from the Actions UI.
+
+The workflow needs the `MSAL_TOKEN_CACHE_B64`, `SUPABASE_URL`, and
+`SUPABASE_KEY` secrets (the same ones the parsing pipeline uses) plus the
+optional `MSAL_CLIENT_ID` variable. It does **not** need `LLM_API_KEY`.
+
+---
+
 ## Data schema
 
-The Supabase `opportunities` table is defined in
-[supabase/migrations/](supabase/migrations). Pydantic mirror in
+The Supabase schema lives in [supabase/migrations/](supabase/migrations):
+the `opportunities` table plus the reminder tables (`reminder_rules`,
+`reminder_recipients`, `reminder_log`). Pydantic mirror in
 [email_parsing/schema.py](email_parsing/schema.py); TypeScript source of
 truth in [src/lib/](src/lib).
 
@@ -227,7 +297,7 @@ Shared contract between the pipeline and the frontend.
 | `location` | `string` | — | Geographic eligibility |
 | `duration` | `"single-year" \| "multi-year"` | — | |
 | `durationMonths` | `number` | `12` | |
-| `status` | `"identified" \| "researching" \| "applying" \| "submitted" \| "awarded" \| "rejected"` | `"identified"` | Pipeline stage |
+| `status` | `"identified" \| "on_hold" \| "researching" \| "applying" \| "submitted" \| "awarded" \| "funds_received" \| "rejected" \| "dismissed"` | `"identified"` | Pipeline stage |
 | `score` | `number` (0–100) | `0` | Mirrors `final_score` after scoring |
 | `tags` | `string[]` | `[]` | LLM-suggested + scoring-suggested tags |
 | `description` | `string` | `""` | 2–3 sentence summary |
