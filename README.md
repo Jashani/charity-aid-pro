@@ -26,8 +26,9 @@ the results to Supabase.
             ▼                                          ▼
         ┌──────────────────────────────────────────────────┐
         │            Supabase (Postgres + RLS)             │
-        │   opportunities · reminder_rules ·               │
-        │   reminder_recipients · reminder_log             │
+        │   opportunities · funder_contacts ·              │
+        │   reminder_rules · reminder_recipients ·         │
+        │   reminder_log                                   │
         └──────────────────────────────────────────────────┘
 
 Three GitHub Actions:
@@ -65,7 +66,7 @@ charity-aid-pro/
 │   │   ├── template.py               # HTML email templates
 │   │   └── tests/
 │   └── tests/
-├── supabase/migrations/              # opportunities + reminder tables
+├── supabase/migrations/              # opportunities · funder_contacts · reminder tables
 └── .github/workflows/
     ├── email-pipeline.yml            # parse inbox (daily 09:00 UTC)
     ├── reminders.yml                 # send reminders (daily 10:00 UTC)
@@ -97,7 +98,7 @@ npm test
 | Pipeline | Kanban — track applications from identified to awarded |
 | Funding | Active grants and renewal tracking |
 | Reports | Analytics and charts |
-| Relationships | Funder contacts and communication history |
+| Relationships | Funder organisations derived from opportunity history; optional contact enrichment |
 | Reminders | Email reminder rules and recipients |
 
 ### Deployment
@@ -275,11 +276,12 @@ optional `MSAL_CLIENT_ID` variable. It does **not** need `LLM_API_KEY`.
 
 ## Data schema
 
-The Supabase schema lives in [supabase/migrations/](supabase/migrations):
-the `opportunities` table plus the reminder tables (`reminder_rules`,
-`reminder_recipients`, `reminder_log`). Pydantic mirror in
-[email_parsing/schema.py](email_parsing/schema.py); TypeScript source of
-truth in [src/lib/](src/lib).
+The Supabase schema lives in [supabase/migrations/](supabase/migrations).
+Pydantic mirror in [email_parsing/schema.py](email_parsing/schema.py);
+TypeScript source of truth in [src/lib/](src/lib).
+
+Tables: `opportunities`, `funder_contacts`, `reminder_rules`,
+`reminder_recipients`, `reminder_log`.
 
 ### FundingOpportunity
 
@@ -312,3 +314,21 @@ Shared contract between the pipeline and the frontend.
 After scoring, opportunities also carry `gating`, `scores`, `timing`,
 `final_score`, `suggested_tags`, and `scored_at`. See
 [email_parsing/README.md](email_parsing/README.md) for the scoring detail.
+
+### FunderContact
+
+Optional enrichment for funder organisations. The Relationships page
+derives per-funder stats (applications, awards, total funded) directly
+from the `opportunities` table grouped by `funder_name`; `funder_contacts`
+holds manually added contact details only.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `id` | `uuid` | auto | Primary key |
+| `organisation` | `string` | — | Funder org name (case-insensitive unique) |
+| `name` | `string` | `""` | Contact person name |
+| `email` | `string` | `""` | Contact email |
+| `notes` | `string` | `""` | Free-form notes (e.g. relationship context) |
+
+The `organisation` column has a case-insensitive unique index so lookups
+and upserts from the frontend normalise to `lower(organisation)`.
