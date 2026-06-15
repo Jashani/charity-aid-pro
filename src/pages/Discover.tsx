@@ -23,6 +23,7 @@ import {
   FileText,
   Loader2,
   XCircle,
+  History,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useOpportunities } from "@/hooks/useOpportunities";
@@ -32,7 +33,9 @@ import {
   formatCurrency,
   daysUntil,
   type FundingOpportunity,
+  type OpportunityStatus,
 } from "@/lib/mock-data";
+import { normalizeFunderName } from "@/hooks/useFunderHistory";
 
 const Discover = () => {
   const queryClient = useQueryClient();
@@ -289,6 +292,12 @@ const Discover = () => {
                   </div>
                 )}
 
+                <FunderHistoryPanel
+                  currentOppId={selectedOpp.id}
+                  funderName={selectedOpp.funderName}
+                  allOpportunities={allOpportunities}
+                />
+
                 <div className="flex items-center gap-2 flex-wrap">
                   <Badge variant="outline" className="rounded-full text-xs">{selectedOpp.type}</Badge>
                   {selectedOpp.tags.map(tag => (
@@ -355,6 +364,79 @@ const Discover = () => {
     </DashboardLayout>
   );
 };
+
+function oppStatusInfo(status: OpportunityStatus): { label: string; className: string } {
+  switch (status) {
+    case "awarded":      return { label: "Awarded",        className: "bg-green-100 text-green-800" };
+    case "funds_received": return { label: "Funds received", className: "bg-green-100 text-green-800" };
+    case "rejected":    return { label: "Rejected",        className: "bg-red-100 text-red-800" };
+    case "submitted":   return { label: "Submitted",       className: "bg-blue-100 text-blue-800" };
+    case "applying":    return { label: "Applying",        className: "bg-yellow-100 text-yellow-800" };
+    case "researching": return { label: "Researching",     className: "bg-yellow-100 text-yellow-800" };
+    default:            return { label: status,            className: "bg-gray-100 text-gray-500" };
+  }
+}
+
+function FunderHistoryPanel({
+  currentOppId,
+  funderName,
+  allOpportunities,
+}: {
+  currentOppId: string;
+  funderName: string;
+  allOpportunities: FundingOpportunity[];
+}) {
+  const normalized = normalizeFunderName(funderName);
+  const others = allOpportunities
+    .filter(
+      (o) =>
+        o.id !== currentOppId &&
+        normalizeFunderName(o.funderName) === normalized &&
+        o.status !== "dismissed",
+    )
+    .sort((a, b) => {
+      const da = a.deadline && a.deadline !== "unknown" ? new Date(a.deadline).getTime() : 0;
+      const db = b.deadline && b.deadline !== "unknown" ? new Date(b.deadline).getTime() : 0;
+      return db - da;
+    })
+    .slice(0, 3);
+
+  if (others.length === 0) {
+    return (
+      <div className="rounded-xl bg-muted/40 px-3 py-2.5">
+        <p className="text-xs text-muted-foreground">
+          <History className="inline h-3 w-3 mr-1 opacity-60" />
+          First time applying to <span className="font-medium">{funderName}</span>.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl bg-muted/40 px-3 py-2.5 space-y-2">
+      <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+        <History className="h-3 w-3" />
+        {others.length} other {others.length === 1 ? "opportunity" : "opportunities"} from this funder
+      </p>
+      <div className="space-y-1.5">
+        {others.map((o) => {
+          const { label, className } = oppStatusInfo(o.status);
+          return (
+            <div key={o.id} className="flex items-center gap-2">
+              <span className="text-xs font-medium flex-1 truncate">{o.programName}</span>
+              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 ${className}`}>
+                {label}
+              </span>
+              <span className="text-[10px] text-muted-foreground shrink-0">
+                {formatCurrency(o.amountAwarded ?? o.amount)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function OpportunityCard({
   opportunity: opp,
