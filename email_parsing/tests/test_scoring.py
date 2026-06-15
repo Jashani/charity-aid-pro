@@ -46,8 +46,13 @@ def test_score_opportunity_geography_hard_fail(opportunity, monkeypatch):
 
 def test_score_opportunity_passes(opportunity, monkeypatch):
     monkeypatch.setattr(scoring, "_geography_with_llm", scoring._geography_keyword_fallback)
+    monkeypatch.setattr(
+        scoring, "_eligibility_with_llm",
+        lambda opp: {"pass": True, "confidence": 0.9, "reasoning": "Test stub — relevant"},
+    )
     result = scoring.score_opportunity(opportunity)
-    assert result.gating["status"] in ("passed", "needs_review")
+    assert result.gating["status"] == "passed"
+    assert result.gating["eligibility"]["pass"] is True
     assert result.scores is not None
     assert "funding_value" in result.scores
     assert "amount_used" in result.scores["funding_value"]
@@ -55,3 +60,46 @@ def test_score_opportunity_passes(opportunity, monkeypatch):
     assert result.final_score is not None
     assert 0 <= result.final_score <= 100
     assert result.scored_at is not None
+
+
+def test_score_opportunity_eligibility_hard_fail(opportunity, monkeypatch):
+    monkeypatch.setattr(scoring, "_geography_with_llm", scoring._geography_keyword_fallback)
+    monkeypatch.setattr(
+        scoring, "_eligibility_with_llm",
+        lambda opp: {"pass": False, "confidence": 0.9, "reasoning": "Sector: forestry"},
+    )
+    result = scoring.score_opportunity(opportunity)
+    assert result.gating["status"] == "failed"
+    assert result.gating["eligibility"]["pass"] is False
+    assert result.scores is None
+    assert result.final_score is None
+
+
+def test_eligibility_keyword_fallback_passes_on_m4w_text(opportunity):
+    result = scoring._eligibility_keyword_fallback(opportunity)
+    assert result["pass"] is True
+    assert result["confidence"] > 0
+
+
+def test_eligibility_keyword_fallback_fails_on_sector_mismatch():
+    from email_parsing.schema import FundingOpportunity
+    opp = FundingOpportunity(
+        id="opp-x", funder_name="Forestry Commission",
+        program_name="Tree Planting Fund", amount=10000,
+        type="government", deadline="unknown", location="England",
+        description="Grants to support tree planting and forestry projects.",
+    )
+    result = scoring._eligibility_keyword_fallback(opp)
+    assert result["pass"] is False
+
+
+def test_eligibility_keyword_fallback_fails_on_stem():
+    from email_parsing.schema import FundingOpportunity
+    opp = FundingOpportunity(
+        id="opp-x", funder_name="Royal Institution",
+        program_name="STEM Education Grants", amount=5000,
+        type="trust", deadline="unknown", location="UK",
+        description="Grants for schools to support STEM subjects.",
+    )
+    result = scoring._eligibility_keyword_fallback(opp)
+    assert result["pass"] is False

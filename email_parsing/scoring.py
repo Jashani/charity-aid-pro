@@ -2,21 +2,17 @@
 
 Stages, in order, per opportunity:
 
-1. Gating
-   - geography (LLM with keyword fallback) — pass/fail on Kent-area eligibility
-   - M4W theme fit (heuristic on description) — flagged 'needs_review' when low
-   Geography hard-fail short-circuits — no further scoring.
-   (M4W eligibility is determined by the LLM during parsing — opportunities the
-   charity is not eligible for are classified IRRELEVANT and never reach scoring.)
+1. Geography gate — LLM with keyword fallback.
+   Hard-fail short-circuits all further processing.
 
-2. Heuristic scores
-   - funding value (internal, derived from amount)
-   - strategic_fit / effort / probability / strategic_value heuristics
+2. Eligibility gate — LLM with keyword fallback.
+   Checks whether the opportunity fits M4W's themes (music, arts, wellbeing,
+   older people, mental health, disability, isolation, etc.).
+   Hard-fail short-circuits scoring — only clearly irrelevant opportunities
+   are rejected; uncertain cases default to pass=true for human review.
 
-3. Weighted final score (0-100) and tag suggestions merged into opp.tags.
-
-The non-geography heuristics are deliberately keyword-based for now (Phase 1).
-Replace `_heuristic_scores` with a single LLM call to upgrade.
+3. Heuristic scores — funding value, strategic fit, effort, probability,
+   strategic value — combined into a weighted final score (0–100).
 """
 
 from __future__ import annotations
@@ -35,7 +31,6 @@ logger = logging.getLogger(__name__)
 
 # ── Geography ────────────────────────────────────────────────────────────────
 
-# Locations whose grants are accessible to a Kent-based charity.
 KENT_AREAS = [
     "canterbury", "dover", "medway", "thanet", "swale", "gravesham",
     "dartford", "maidstone", "ashford", "folkestone", "tonbridge",
@@ -95,7 +90,125 @@ Rules:
         return _geography_keyword_fallback(location)
 
 
-# ── Internal score helpers ───────────────────────────────────────────────────
+# ── Eligibility ───────────────────────────────────────────────────────────────
+
+# Aligned with the charity's own keyword list plus common synonyms.
+ELIGIBILITY_KEYWORDS = (
+    "accessible", "accessibility",
+    "age", "ageing", "aging", "older people", "older adults", "later life",
+    "ageing well", "healthy ageing",
+    "art", "arts", "creative", "creativity",
+    "bereavement",
+    "care", "carer", "carers", "caring",
+    "community", "connection", "belonging",
+    "creative health",
+    "dementia",
+    "deprivation", "disadvantage", "disadvantaged", "deprived",
+    "disability", "disabled",
+    "emotional", "emotion",
+    "health", "wellbeing", "well-being",
+    "intergenerational",
+    "isolation", "loneliness", "lonely",
+    "inclusive", "inclusion", "marginalised", "marginalized",
+    "mental health",
+    "music", "singing", "song", "choir", "dance",
+    "neurological", "neurodiversity", "neurodivergent",
+    "non-clinical",
+    "parkinson", "stroke",
+    "participatory",
+    "respiratory", "breathing",
+    "small charities", "small charity",
+    "social prescribing",
+    "therapeutic", "therapy",
+    "vulnerable", "vulnerable adults",
+)
+
+# High-confidence sector exclusions used only in the keyword fallback (when the
+# LLM eligibility call is unavailable). Matched case-insensitively against the
+# combined funder name + programme name + description text.
+# Keep this list short and conservative — the primary LLM call handles nuance.
+SECTOR_HARD_FAIL = (
+    "forestry", "tree planting", "rewilding", "ecology", "biodiversity",
+    "recycling",
+    "asylum seeker", "refugee",
+    "armed forces",
+)
+
+
+def _eligibility_keyword_fallback(opp: FundingOpportunity) -> dict[str, Any]:
+    """Heuristic fallback used only when the LLM eligibility call errors."""
+    text = f"{opp.funder_name} {opp.program_name} {opp.description}".lower()
+    original = f"{opp.funder_name} {opp.program_name} {opp.description}"
+
+    # STEM must be checked case-sensitively to avoid substring noise ("system",
+    # "eastern", etc.).
+    if "STEM" in original:
+        return {
+            "pass": False,
+            "confidence": 0.8,
+            "reasoning": "Keyword fallback: STEM education sector",
+        }
+
+    for pattern in SECTOR_HARD_FAIL:
+        if pattern in text:
+            return {
+                "pass": False,
+                "confidence": 0.75,
+                "reasoning": f"Keyword fallback: sector mismatch ({pattern})",
+            }
+
+    hits = sum(1 for kw in ELIGIBILITY_KEYWORDS if kw in text)
+    # Default to pass=true when LLM is unavailable — prefer false positives over
+    # false negatives. A human reviewer will see the opportunity regardless.
+    return {
+        "pass": True,
+        "confidence": round(min(hits / 10, 0.8), 2) if hits else 0.2,
+        "reasoning": f"LLM unavailable — keyword fallback ({hits} keyword hits)",
+    }
+
+
+def _eligibility_with_llm(opp: FundingOpportunity) -> dict[str, Any]:
+    """Primary eligibility gate: LLM semantic check with keyword fallback."""
+    text = f"{opp.funder_name} — {opp.program_name}: {opp.description}"
+    prompt = f"""You are screening a grant for Music4Wellbeing (M4W), a Kent charity running \
+participatory music, singing, and creative arts for isolated older adults, people with \
+disabilities, and those with poor mental health.
+
+Opportunity: {text}
+
+Return JSON only:
+{{"pass": true | false, "confidence": 0.0-1.0, "reasoning": "<one sentence>"}}
+
+pass=true if related to: music, arts, singing, dance, creative activities, wellbeing, \
+mental health, older people, ageing, dementia, Parkinson's, stroke, isolation, loneliness, \
+carers, disability, neurodiversity, intergenerational activities, therapeutic work, \
+disadvantaged communities, or broadly applicable community health/social funding.
+
+pass=false only if clearly in a different sector: natural environment/ecology/forestry/\
+tree planting, building or property repair, children's schools education, STEM, \
+legal/asylum/migration, electrical recycling, animal welfare, armed forces, or \
+sport/recreation facilities.
+
+When uncertain, return pass=true — a human reviewer will decide.
+"""
+    try:
+        raw = _chat(prompt, stage="eligibility")
+        data = _parse_json(raw, stage="eligibility")
+        if not isinstance(data, dict) or "pass" not in data:
+            raise LLMError("eligibility: missing 'pass'")
+        data.setdefault("reasoning", "")
+        data.setdefault("confidence", 0.5)
+        return {
+            "pass": bool(data["pass"]),
+            "confidence": float(data["confidence"]),
+            "reasoning": data["reasoning"],
+        }
+    except Exception as exc:
+        logger.warning("Eligibility LLM call failed (%s) — using keyword fallback", exc)
+        return _eligibility_keyword_fallback(opp)
+
+
+# ── Internal score helpers ────────────────────────────────────────────────────
 
 def _funding_value_score(amount: float, amount_max: float | None) -> tuple[int, float]:
     """Returns (internal_score, amount_used). Only amount_used is persisted."""
@@ -112,7 +225,7 @@ def _funding_value_score(amount: float, amount_max: float | None) -> tuple[int, 
 
 
 def _timing_score(deadline: str) -> int | None:
-    """Internal urgency score from the deadline. Returns None if unknown/expired."""
+    """Urgency score from deadline. Returns None if unknown or expired."""
     if not deadline or deadline == "unknown":
         return None
     try:
@@ -133,24 +246,18 @@ def _timing_score(deadline: str) -> int | None:
     return 2
 
 
-# ── Heuristic scores (placeholder for full LLM scoring) ──────────────────────
-
-ELIGIBILITY_KEYWORDS = (
-    "wellbeing", "older people", "elderly", "isolation", "loneliness",
-    "community", "disability", "arts", "music", "mental health",
-    "social prescribing",
-)
-
-
 def _heuristic_scores(opp: FundingOpportunity) -> dict[str, dict[str, Any]]:
-    text = opp.description.lower()
+    """Compute scoring dimensions (strategic fit, effort, probability, strategic value).
+
+    Eligibility is handled upstream by _eligibility_with_llm; this function
+    only produces the components that feed into the final weighted score.
+    """
+    # Check across all three text fields for better keyword coverage.
+    text = f"{opp.funder_name} {opp.program_name} {opp.description}".lower()
     funder_type = opp.type
     amount_max = opp.amount_max if opp.amount_max is not None else opp.amount
 
     hits = sum(1 for kw in ELIGIBILITY_KEYWORDS if kw in text)
-    eligibility_pass = hits > 0
-    eligibility_confidence = round(min(hits / len(ELIGIBILITY_KEYWORDS), 1.0), 2)
-
     strategic_fit = max(1, min(hits * 2, 10))
 
     if re.search(r"\b(eoi|expression of interest|short form|simple application|one-page)\b", text):
@@ -187,38 +294,49 @@ def _heuristic_scores(opp: FundingOpportunity) -> dict[str, dict[str, Any]]:
     strategic_value = min(strategic_value, 10)
 
     return {
-        "eligibility": {
-            "pass": eligibility_pass,
-            "confidence": eligibility_confidence,
-            "reasoning": f"Matched {hits}/{len(ELIGIBILITY_KEYWORDS)} M4W keywords",
+        "strategic_fit": {
+            "score": strategic_fit,
+            "reasoning": f"Matched {hits} M4W keywords across name and description",
         },
-        "strategic_fit": {"score": strategic_fit, "reasoning": "Keyword match on M4W themes"},
         "effort": {"score": effort, "reasoning": "Inferred from description / funder type"},
         "probability": {"score": probability, "reasoning": "From grant size band"},
         "strategic_value": {"score": strategic_value, "reasoning": "From duration / purpose"},
     }
 
 
-# ── Pipeline entry point ─────────────────────────────────────────────────────
+# ── Pipeline entry point ──────────────────────────────────────────────────────
 
 def score_opportunity(opp: FundingOpportunity) -> FundingOpportunity:
     """Run gating + scoring on *opp*, mutate it in place, and return it."""
-    geo = _geography_with_llm(opp.location)
-    geo_pass: bool = bool(geo["pass"])
 
-    if not geo_pass:
+    # 1. Geography gate
+    geo = _geography_with_llm(opp.location)
+    if not geo["pass"]:
         opp.gating = {
             "status": "failed",
-            "eligibility": {"pass": False, "confidence": 0.0, "reasoning": "Skipped — geography hard fail"},
             "geography": {"pass": False, "reasoning": geo.get("reasoning", "")},
+            "eligibility": {"pass": False, "confidence": 0, "reasoning": "Skipped — geography hard fail"},
         }
         opp.scored_at = datetime.now(timezone.utc)
         return opp
 
-    heur = _heuristic_scores(opp)
-    eligibility_pass = bool(heur["eligibility"]["pass"])
-    gating_status = "passed" if eligibility_pass else "needs_review"
+    # 2. Eligibility gate
+    elig = _eligibility_with_llm(opp)
+    if not elig["pass"]:
+        opp.gating = {
+            "status": "failed",
+            "geography": {"pass": True, "reasoning": geo.get("reasoning", "")},
+            "eligibility": {
+                "pass": False,
+                "confidence": elig.get("confidence", 0),
+                "reasoning": elig.get("reasoning", ""),
+            },
+        }
+        opp.scored_at = datetime.now(timezone.utc)
+        return opp
 
+    # 3. Heuristic scoring — only reached when both gates pass
+    heur = _heuristic_scores(opp)
     fv_score, fv_amount = _funding_value_score(opp.amount, opp.amount_max)
     timing_score = _timing_score(opp.deadline)
 
@@ -250,9 +368,13 @@ def score_opportunity(opp: FundingOpportunity) -> FundingOpportunity:
         suggested.append("High Value")
 
     opp.gating = {
-        "status": gating_status,
-        "eligibility": heur["eligibility"],
+        "status": "passed",
         "geography": {"pass": True, "reasoning": geo.get("reasoning", "")},
+        "eligibility": {
+            "pass": True,
+            "confidence": elig.get("confidence", 0.5),
+            "reasoning": elig.get("reasoning", ""),
+        },
     }
     opp.scores = {
         "strategic_fit": {"score": sf_score, "reasoning": heur["strategic_fit"]["reasoning"]},
