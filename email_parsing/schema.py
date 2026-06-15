@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 FundingType = Literal["grant", "trust", "lottery", "corporate", "government"]
@@ -24,6 +24,16 @@ class FundingOpportunity(BaseModel):
     type: FundingType
     deadline: str
     location: str
+
+    @field_validator('funder_name', 'program_name', mode='before')
+    @classmethod
+    def _coerce_none_to_unknown(cls, v: Any) -> str:
+        return v if v is not None else 'Unknown'
+
+    @field_validator('deadline', 'location', 'description', 'notes', 'website', mode='before')
+    @classmethod
+    def _coerce_none_to_empty(cls, v: Any) -> str:
+        return v if v is not None else ''
     duration_months: int = 12
     status: OpportunityStatus = "identified"
     score: float = Field(default=0.0, ge=0.0, le=100.0)
