@@ -23,6 +23,20 @@ def test_geography_keyword_fallback_unknown_passes():
     assert scoring._geography_keyword_fallback("")["pass"] is True
 
 
+def _stub_pass(activity: int, audience: int):
+    final = round(activity * 0.4 + audience * 0.6)
+    return lambda opp: {"pass": True, "activity_score": activity,
+                        "audience_score": audience, "final_score": final,
+                        "reasoning": "stub"}
+
+
+def _stub_fail(activity: int, audience: int):
+    final = round(activity * 0.4 + audience * 0.6)
+    return lambda opp: {"pass": False, "activity_score": activity,
+                        "audience_score": audience, "final_score": final,
+                        "reasoning": "stub fail"}
+
+
 def test_score_opportunity_geography_hard_fail(opportunity, monkeypatch):
     opportunity.location = "Scotland only"
     monkeypatch.setattr(scoring, "_geography_with_llm", scoring._geography_keyword_fallback)
@@ -34,39 +48,67 @@ def test_score_opportunity_geography_hard_fail(opportunity, monkeypatch):
 
 def test_score_opportunity_passes(opportunity, monkeypatch):
     monkeypatch.setattr(scoring, "_geography_with_llm", scoring._geography_keyword_fallback)
-    monkeypatch.setattr(
-        scoring, "_score_with_llm",
-        lambda opp: {"pass": True, "score": 75, "reasoning": "Good mission alignment"},
-    )
+    monkeypatch.setattr(scoring, "_score_with_llm", _stub_pass(70, 80))
     result = scoring.score_opportunity(opportunity)
     assert result.gating["status"] == "passed"
     assert result.gating["score"]["pass"] is True
-    assert result.scores is not None
-    assert "mission_alignment" in result.scores
-    assert result.scores["mission_alignment"]["score"] == 75
-    assert result.final_score == 75.0
+    assert result.gating["score"]["activity_score"] == 70
+    assert result.gating["score"]["audience_score"] == 80
+    assert result.scores == {
+        "activity_alignment": {"score": 70},
+        "audience_alignment": {"score": 80},
+    }
+    # reasoning must NOT be duplicated in scores
+    assert "reasoning" not in result.scores
+    expected_final = round(70 * 0.4 + 80 * 0.6)
+    assert result.final_score == float(expected_final)
     assert result.scored_at is not None
 
 
 def test_score_opportunity_dismissed_on_fail(opportunity, monkeypatch):
     monkeypatch.setattr(scoring, "_geography_with_llm", scoring._geography_keyword_fallback)
-    monkeypatch.setattr(
-        scoring, "_score_with_llm",
-        lambda opp: {"pass": False, "score": 5, "reasoning": "Sector: forestry"},
-    )
+    monkeypatch.setattr(scoring, "_score_with_llm", _stub_fail(5, 5))
     result = scoring.score_opportunity(opportunity)
     assert result.gating["status"] == "failed"
     assert result.gating["score"]["pass"] is False
     assert result.scores is None
     assert result.score == 0.0
     assert result.status == "dismissed"
-    assert result.dismissal_reason == "Sector: forestry"
+    assert result.dismissal_reason == "stub fail"
+
+
+def test_weighted_score_40_60(opportunity, monkeypatch):
+    """Final score must be activity×0.4 + audience×0.6."""
+    monkeypatch.setattr(scoring, "_geography_with_llm", scoring._geography_keyword_fallback)
+    monkeypatch.setattr(scoring, "_score_with_llm", _stub_pass(60, 90))
+    result = scoring.score_opportunity(opportunity)
+    assert result.final_score == float(round(60 * 0.4 + 90 * 0.6))  # 78
+
+
+def test_score_below_20_forces_dismissal(opportunity, monkeypatch):
+    """LLM returning a weighted score < 20 must dismiss even if pass=true."""
+    monkeypatch.setattr(scoring, "_geography_with_llm", scoring._geography_keyword_fallback)
+
+    def stubbed(opp):
+        # Simulate inconsistent LLM: pass=true but scores are very low
+        activity, audience = 10, 10
+        final = round(activity * 0.4 + audience * 0.6)
+        passed = True
+        if final < 20:
+            passed = False
+        return {"pass": passed, "activity_score": activity, "audience_score": audience,
+                "final_score": final, "reasoning": "Low alignment"}
+
+    monkeypatch.setattr(scoring, "_score_with_llm", stubbed)
+    result = scoring.score_opportunity(opportunity)
+    assert result.gating["status"] == "failed"
+    assert result.status == "dismissed"
 
 
 def test_score_keyword_fallback_passes_on_m4w_text(opportunity):
     result = scoring._score_keyword_fallback(opportunity)
     assert result["pass"] is True
-    assert result["score"] > 0
+    assert result["activity_score"] > 0 or result["audience_score"] > 0
 
 
 def test_score_keyword_fallback_fails_on_sector_mismatch():
@@ -91,21 +133,15 @@ def test_score_keyword_fallback_fails_on_stem():
     assert result["pass"] is False
 
 
-def test_score_below_20_forces_pass_false(opportunity, monkeypatch):
-    """LLM returning score < 20 must be dismissed even if it returns pass=true."""
+def test_strong_match_tag_at_80(opportunity, monkeypatch):
     monkeypatch.setattr(scoring, "_geography_with_llm", scoring._geography_keyword_fallback)
-    # Simulate LLM being inconsistent: pass=true but score=15
-    original = scoring._score_with_llm
-
-    def stubbed_llm(opp):
-        result = {"pass": True, "score": 15, "reasoning": "Low alignment"}
-        score = max(0, min(100, int(result["score"])))
-        passed = bool(result["pass"])
-        if score < 20:
-            passed = False
-        return {"pass": passed, "score": score, "reasoning": result["reasoning"]}
-
-    monkeypatch.setattr(scoring, "_score_with_llm", stubbed_llm)
+    monkeypatch.setattr(scoring, "_score_with_llm", _stub_pass(80, 80))
     result = scoring.score_opportunity(opportunity)
-    assert result.gating["status"] == "failed"
-    assert result.status == "dismissed"
+    assert "Strong Match" in result.tags
+
+
+def test_no_strong_match_tag_below_80(opportunity, monkeypatch):
+    monkeypatch.setattr(scoring, "_geography_with_llm", scoring._geography_keyword_fallback)
+    monkeypatch.setattr(scoring, "_score_with_llm", _stub_pass(60, 70))
+    result = scoring.score_opportunity(opportunity)
+    assert "Strong Match" not in result.tags

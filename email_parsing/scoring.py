@@ -126,76 +126,112 @@ SECTOR_HARD_FAIL = (
 )
 
 
+_ACTIVITY_KEYWORDS = (
+    "music", "singing", "song", "choir", "dance", "art", "arts", "creative",
+    "creativity", "therapeutic", "therapy", "participatory", "social prescribing",
+    "creative health",
+)
+_AUDIENCE_KEYWORDS = (
+    "dementia", "parkinson", "older people", "older adults", "ageing", "aging",
+    "later life", "mental health", "disability", "disabled", "carer", "carers",
+    "caring", "vulnerable", "vulnerable adults", "neurological", "neurodiversity",
+    "stroke", "isolation", "loneliness", "ill health",
+)
+
+
 def _score_keyword_fallback(opp: FundingOpportunity) -> dict[str, Any]:
     """Fallback used only when the LLM scoring call errors."""
     text = f"{opp.funder_name} {opp.program_name} {opp.description}"
     text_lower = text.lower()
 
     if "STEM" in text:
-        return {"pass": False, "score": 5, "reasoning": "Keyword fallback: STEM education sector"}
+        return {"pass": False, "activity_score": 5, "audience_score": 5, "final_score": 5,
+                "reasoning": "Keyword fallback: STEM education sector"}
 
     for pattern in SECTOR_HARD_FAIL:
         if pattern in text_lower:
-            return {"pass": False, "score": 5, "reasoning": f"Keyword fallback: sector mismatch ({pattern})"}
+            return {"pass": False, "activity_score": 5, "audience_score": 5, "final_score": 5,
+                    "reasoning": f"Keyword fallback: sector mismatch ({pattern})"}
 
-    hits = sum(1 for kw in ELIGIBILITY_KEYWORDS if kw in text_lower)
-    score = min(hits * 8, 40)
+    activity_hits = sum(1 for kw in _ACTIVITY_KEYWORDS if kw in text_lower)
+    audience_hits = sum(1 for kw in _AUDIENCE_KEYWORDS if kw in text_lower)
+    activity_score = min(activity_hits * 10, 40)
+    audience_score = min(audience_hits * 10, 40)
+    final = round(activity_score * 0.4 + audience_score * 0.6)
     return {
         "pass": True,
-        "score": score,
-        "reasoning": f"LLM unavailable — keyword fallback ({hits} keyword hits)",
+        "activity_score": activity_score,
+        "audience_score": audience_score,
+        "final_score": final,
+        "reasoning": f"LLM unavailable — keyword fallback (activity: {activity_hits}, audience: {audience_hits})",
     }
 
 
 def _score_with_llm(opp: FundingOpportunity) -> dict[str, Any]:
-    """Single LLM call: eligibility gate + 0–100 mission-alignment score."""
+    """Single LLM call: eligibility gate + two-dimension mission-alignment score."""
     amount_str = f"£{opp.amount:,.0f}"
     if opp.amount_max and opp.amount_max > opp.amount:
         amount_str += f"–£{opp.amount_max:,.0f}"
 
     text = f"{opp.funder_name} — {opp.program_name}: {opp.description}"
 
-    prompt = f"""Score this grant for Music4Wellbeing (M4W), a Kent charity whose mission is: \
-"For the public benefit in South East England, the relief of those in need by reason of \
-physical and/or mental ill health, disability or age, including people with neurodegenerative \
-conditions such as dementia and Parkinson's, and their carers through providing specifically \
-designed, group therapeutic music sessions and associated activities led by experienced \
-therapeutic arts practitioners."
+    prompt = f"""Score this grant for Music4Wellbeing (M4W), a Kent charity providing group \
+therapeutic music sessions and associated activities for people in need due to physical or \
+mental ill health, disability, or age — including dementia, Parkinson's, and their carers.
 
 Opportunity: {text}
 Award: {amount_str}
 
-Scoring rubric (0–100 integer):
-0–19  — Ineligible or no alignment. Wrong sector (environment/ecology, STEM, sport \
-facilities, legal/asylum, animal welfare, armed forces, building repair). Charity \
-clearly cannot apply. Set pass=false — will be auto-dismissed.
-20–39 — Weak alignment. Vaguely related or broadly applicable but poor mission fit. \
-Eligible but overlap is peripheral. Low value or highly restrictive terms.
-40–59 — Moderate alignment. Eligible; mission broadly matches — overlaps M4W's \
-activities (music, arts, wellbeing) OR beneficiaries (older adults, disability, \
-mental health) but not strongly both. Modest value (under £10,000).
-60–79 — Good alignment. Clearly eligible. Meaningful overlap with M4W's core work \
-(participatory music, therapeutic arts) or specific beneficiaries (older adults, \
-dementia, Parkinson's, carers, disability, isolation). Reasonable value (£10,000–£30,000).
-80–100 — Excellent, specific alignment. Strong fit with M4W's exact mission — funder \
-seeks therapeutic music/arts for older adults or people with disability/mental ill health. \
-Charity is a strong candidate. High value (£30,000+) or significant strategic value.
+Score on TWO dimensions (0–100 integer each):
 
-Set pass=false if score ≤ 19 or charity is clearly ineligible regardless of score.
+ACTIVITY ALIGNMENT — how well does this match "group therapeutic music sessions and \
+associated creative activities led by experienced practitioners"?
+0–19: Wrong sector entirely (STEM, building repair, legal/asylum, sport facilities, \
+tax/financial advice, ecology)
+20–39: Vaguely arts/creative but not therapeutic or participatory in nature
+40–59: Broadly music/arts/creative with some wellbeing angle, not specifically \
+therapeutic or group-based
+60–79: Music, singing, or creative arts with clear therapeutic or community wellbeing focus
+80–100: Specifically therapeutic/participatory music or arts — group sessions, \
+practitioner-led, or directly matches M4W's activity model
 
-Return JSON only: {{"pass": true|false, "score": <integer 0-100>, "reasoning": "<one sentence>"}}"""
+AUDIENCE ALIGNMENT — how well does this match "people in need due to ill health, \
+disability or age — dementia, Parkinson's, and their carers"?
+0–19: Wrong audience (professionals, healthy general public, schools, animals)
+20–39: Open community grants with no focus on vulnerable or marginalised groups
+40–59: Some vulnerability focus (e.g. deprivation, social isolation) but not \
+specifically health/age/disability
+60–79: Targets mental health, older people, disability, carers, loneliness, or similar
+80–100: Specifically targets dementia, Parkinson's, older adults with health needs, \
+physical/mental ill health, disability, or carers
+
+Final score = activity×40% + audience×60%. Set pass=false if final score < 20 or \
+charity is clearly ineligible.
+
+Return JSON only: \
+{{"pass": true|false, "activity_score": <0-100>, "audience_score": <0-100>, \
+"reasoning": "<one sentence covering both dimensions>"}}"""
 
     try:
         raw = _chat(prompt, stage="score")
         data = _parse_json(raw, stage="score")
-        if not isinstance(data, dict) or "pass" not in data or "score" not in data:
+        if not isinstance(data, dict) or "pass" not in data \
+                or "activity_score" not in data or "audience_score" not in data:
             raise LLMError("score: missing required fields")
         data.setdefault("reasoning", "")
-        score = max(0, min(100, int(data["score"])))
+        activity = max(0, min(100, int(data["activity_score"])))
+        audience = max(0, min(100, int(data["audience_score"])))
+        final = round(activity * 0.4 + audience * 0.6)
         passed = bool(data["pass"])
-        if score < 20:
+        if final < 20:
             passed = False
-        return {"pass": passed, "score": score, "reasoning": data["reasoning"]}
+        return {
+            "pass": passed,
+            "activity_score": activity,
+            "audience_score": audience,
+            "final_score": final,
+            "reasoning": data["reasoning"],
+        }
     except Exception as exc:
         logger.warning("Score LLM call failed (%s) — using keyword fallback", exc)
         return _score_keyword_fallback(opp)
@@ -235,7 +271,8 @@ def score_opportunity(opp: FundingOpportunity) -> FundingOpportunity:
         opp.gating = {
             "status": "failed",
             "geography": {"pass": False, "reasoning": geo.get("reasoning", "")},
-            "score": {"pass": False, "score": 0, "reasoning": "Skipped — geography hard fail"},
+            "score": {"pass": False, "activity_score": 0, "audience_score": 0,
+                      "final_score": 0, "reasoning": "Skipped — geography hard fail"},
         }
         opp.score = 0.0
         opp.final_score = 0.0
@@ -248,7 +285,13 @@ def score_opportunity(opp: FundingOpportunity) -> FundingOpportunity:
         opp.gating = {
             "status": "failed",
             "geography": {"pass": True, "reasoning": geo.get("reasoning", "")},
-            "score": result,
+            "score": {
+                "pass": False,
+                "activity_score": result["activity_score"],
+                "audience_score": result["audience_score"],
+                "final_score": result["final_score"],
+                "reasoning": result["reasoning"],
+            },
         }
         opp.score = 0.0
         opp.final_score = 0.0
@@ -269,7 +312,7 @@ def score_opportunity(opp: FundingOpportunity) -> FundingOpportunity:
         suggested.append("Quick Win")
     if opp.duration_months >= 24:
         suggested.append("Multi-Year")
-    if result["score"] >= 80:
+    if result["final_score"] >= 80:
         suggested.append("Strong Match")
     if amount_max >= 30_000:
         suggested.append("High Value")
@@ -277,16 +320,21 @@ def score_opportunity(opp: FundingOpportunity) -> FundingOpportunity:
     opp.gating = {
         "status": "passed",
         "geography": {"pass": True, "reasoning": geo.get("reasoning", "")},
-        "score": result,
-    }
-    opp.scores = {
-        "mission_alignment": {
-            "score": result["score"],
+        "score": {
+            "pass": True,
+            "activity_score": result["activity_score"],
+            "audience_score": result["audience_score"],
+            "final_score": result["final_score"],
             "reasoning": result["reasoning"],
-        }
+        },
     }
-    opp.score = float(result["score"])
-    opp.final_score = float(result["score"])
+    # reasoning lives in gating.score only — not duplicated here
+    opp.scores = {
+        "activity_alignment": {"score": result["activity_score"]},
+        "audience_alignment": {"score": result["audience_score"]},
+    }
+    opp.score = float(result["final_score"])
+    opp.final_score = float(result["final_score"])
     opp.tags = sorted(set(opp.tags + suggested))
     opp.scored_at = datetime.now(timezone.utc)
     return opp
