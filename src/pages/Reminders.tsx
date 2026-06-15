@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Bell, Mail, Clock, RefreshCw, CalendarCheck, Newspaper, Eye, X, Loader2 } from "lucide-react";
+import { Bell, Mail, Clock, RefreshCw, CalendarCheck, Newspaper, Eye, X, Loader2, Pencil } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { toast } from "sonner";
 import { useReminderRules } from "@/hooks/useReminderRules";
@@ -50,6 +50,10 @@ const Reminders = () => {
   const [newEmail, setNewEmail] = useState("");
   const [newLabel, setNewLabel] = useState("");
 
+  const [editingRule, setEditingRule] = useState<ReminderRule | null>(null);
+  const [draftOffsets, setDraftOffsets] = useState<number[]>([]);
+  const [offsetInput, setOffsetInput] = useState("");
+
   const isLoading = rulesLoading || recipientsLoading;
 
   const toggleRule = (rule: ReminderRule) => {
@@ -74,6 +78,36 @@ const Reminders = () => {
           toast.success(`${newEmail.trim().toLowerCase()} added as recipient`);
         },
         onError: (err) => toast.error(`Failed to add recipient: ${err.message}`),
+      },
+    );
+  };
+
+  const openEditTiming = (rule: ReminderRule) => {
+    setEditingRule(rule);
+    setDraftOffsets([...rule.offsetsDays]);
+    setOffsetInput("");
+  };
+
+  const addDraftOffset = () => {
+    const n = parseInt(offsetInput, 10);
+    if (!Number.isInteger(n) || n <= 0 || draftOffsets.includes(n)) {
+      setOffsetInput("");
+      return;
+    }
+    setDraftOffsets((prev) => [...prev, n]);
+    setOffsetInput("");
+  };
+
+  const handleSaveTiming = () => {
+    if (!editingRule) return;
+    updateRule.mutate(
+      { id: editingRule.id, offsets_days: draftOffsets },
+      {
+        onSuccess: () => {
+          setEditingRule(null);
+          toast.success("Reminder timing updated");
+        },
+        onError: (err) => toast.error(`Failed to update timing: ${err.message}`),
       },
     );
   };
@@ -129,6 +163,15 @@ const Reminders = () => {
                   )}
                 </div>
               </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => openEditTiming(rule)}
+                title="Edit timing"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
               <Switch
                 checked={rule.enabled}
                 onCheckedChange={() => toggleRule(rule)}
@@ -206,6 +249,61 @@ const Reminders = () => {
           </Card>
         )}
       </div>
+
+      {/* Edit Timing Dialog */}
+      <Dialog open={!!editingRule} onOpenChange={(open) => { if (!open) setEditingRule(null); }}>
+        <DialogContent className="rounded-xl">
+          <DialogHeader>
+            <DialogTitle>Edit reminder timing</DialogTitle>
+            <DialogDescription>
+              Choose how many days before the deadline to send reminders for "{editingRule?.name}".
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="flex flex-wrap gap-2 min-h-[36px]">
+              {[...draftOffsets].sort((a, b) => b - a).map((n) => (
+                <span key={n} className="flex items-center gap-1 rounded-full bg-muted px-3 py-1 text-sm">
+                  {n}d
+                  <button
+                    type="button"
+                    className="ml-1 text-muted-foreground hover:text-foreground"
+                    onClick={() => setDraftOffsets((prev) => prev.filter((x) => x !== n))}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+              {draftOffsets.length === 0 && (
+                <p className="text-sm text-muted-foreground">No offsets set. Add at least one.</p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Input
+                type="number"
+                min={1}
+                placeholder="Days before deadline"
+                value={offsetInput}
+                onChange={(e) => setOffsetInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addDraftOffset(); } }}
+                className="rounded-xl"
+              />
+              <Button variant="outline" className="rounded-xl shrink-0" onClick={addDraftOffset}>
+                Add
+              </Button>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingRule(null)} className="rounded-xl">Cancel</Button>
+            <Button
+              onClick={handleSaveTiming}
+              className="rounded-xl"
+              disabled={draftOffsets.length === 0 || updateRule.isPending}
+            >
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Add Recipient Dialog */}
       <Dialog open={showAddRecipient} onOpenChange={setShowAddRecipient}>
