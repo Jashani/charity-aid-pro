@@ -9,12 +9,13 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart";
 import { BarChart, Bar, XAxis, YAxis, PieChart, Pie, Cell } from "recharts";
-import { Download, Printer, TrendingUp, TrendingDown, CheckCircle, Loader2 } from "lucide-react";
+import { Download, FileDown, Printer, TrendingUp, TrendingDown, CheckCircle, Loader2 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { toast } from "sonner";
 import { useOpportunities } from "@/hooks/useOpportunities";
 import { useActiveFunding } from "@/hooks/useActiveFunding";
 import { formatCurrency, daysUntil } from "@/lib/mock-data";
+import { exportGrantsXlsx } from "@/lib/exportXlsx";
 
 const Reports = () => {
   const { data: opportunities = [], isLoading: loadingOpps } = useOpportunities();
@@ -51,6 +52,11 @@ const Reports = () => {
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleExportXlsx = () => {
+    exportGrantsXlsx(opportunities);
+    toast.success("Grants exported to Excel");
   };
 
   const handleDownload = () => {
@@ -135,10 +141,14 @@ const Reports = () => {
                 ))}
               </SelectContent>
             </Select>
+            <Button variant="outline" className="rounded-xl gap-2" onClick={handleExportXlsx}>
+              <FileDown className="h-4 w-4" />
+              Export Grants (.xlsx)
+            </Button>
             <Button variant="outline" size="icon" className="rounded-xl" onClick={handlePrint} title="Print report">
               <Printer className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="icon" className="rounded-xl" onClick={handleDownload} title="Download CSV">
+            <Button variant="outline" size="icon" className="rounded-xl" onClick={handleDownload} title="Download metrics CSV">
               <Download className="h-4 w-4" />
             </Button>
           </div>
