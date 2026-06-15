@@ -37,28 +37,47 @@ keys exactly as shown. Schema:
   ]
 }
 
-Eligibility gating (apply BEFORE classifying):
-- If the funder's published eligibility criteria clearly EXCLUDE Music4Wellbeing
-  (e.g. for-profit only; individuals only; restricted to a region that does not
-  include Kent/South East/England/UK; a sector M4W does not work in such as
-  sport, football, housing, ed-tech, environment, animal welfare), classify as
-  IRRELEVANT and return opportunities = [].
-- If eligibility is clearly satisfied OR if it is ambiguous / unstated / partly
-  applicable, INCLUDE the opportunity. Human reviewers will decide. Do not omit
-  ambiguous opportunities.
+Per-opportunity eligibility gate (apply independently to EACH opportunity before
+deciding whether to extract it — especially important for newsletter emails that
+list many grants across different sectors):
+
+SKIP an opportunity (do not extract it) if ANY of the following apply:
+1. Geographic mismatch: the funder explicitly restricts to a region that excludes
+   Kent — e.g. Scotland, Wales, Northern Ireland, London only, West Midlands,
+   Greater Manchester, Bristol, or other specific English regions outside the South East.
+2. Sector mismatch: the core purpose is clearly in a sector M4W does not work in:
+   - Sport, football, or physical recreation facilities
+   - Natural environment, ecology, forestry, tree planting, or rewilding
+   - Building or property repair, maintenance, or renovation
+   - Schools, children's formal education, STEM subjects, or ed-tech
+   - Legal services, asylum seekers, refugees, or immigration
+   - Electrical or technology recycling
+   - Animal welfare
+   - Armed forces or military families (unless the programme is open to broader
+     community wellbeing work that M4W's activities would qualify for)
+   - Religious buildings or infrastructure (unless for community-facing activities)
+3. Insufficient information: only a title or date is mentioned with no description
+   of purpose — there is not enough detail to judge relevance or write a description.
+
+INCLUDE an opportunity if its purpose is plausibly relevant to Music4Wellbeing:
+   - Music, singing, dance, arts, or creative activities
+   - Wellbeing, mental health, emotional health, or therapeutic activities
+   - Older people, ageing, dementia, Parkinson's, stroke, or carers
+   - Isolation, loneliness, community connection, belonging, or social inclusion
+   - Disability, neurodiversity, or vulnerable adults
+   - Intergenerational activities or healthy ageing
+   - Broadly applicable community health or social grants that a small arts/wellbeing
+     charity like M4W would be eligible for
+   - Ambiguous or unstated purpose — when in doubt, include it; human reviewers decide
 
 Rules:
-- Use FUNDING_OPPORTUNITY only when the email announces one or more grants,
-  trusts, lotteries, corporate funds, or government funds open for application
-  AND M4W is eligible (or ambiguously eligible) per the gating above AND the
-  funding purpose is plausibly relevant to Music4Wellbeing's mission (music,
-  arts, wellbeing, mental health, community activities, older people,
-  loneliness, isolation, disability, social inclusion, or broadly applicable
-  community/charity funding).
-- Use NEWSLETTER for digests/bulletins that mention funding generally without a
-  direct opportunity. opportunities should be [].
-- Use IRRELEVANT for anything else (spam, admin, personal, or funding clearly
-  unrelated to M4W's work). opportunities = [].
+- Use FUNDING_OPPORTUNITY only when at least one opportunity passes the per-opportunity
+  gate above.
+- Use NEWSLETTER for digests/bulletins that mention funding generally but every
+  individual opportunity fails the gate (or none are described in enough detail).
+  Set opportunities = [].
+- Use IRRELEVANT for anything else (spam, admin, personal, no funding content).
+  Set opportunities = [].
 - Only populate opportunities when classification = FUNDING_OPPORTUNITY.
 - For website and contact_email: these almost always exist in a real funding
   email. Scan the entire email body carefully — check footers, signatures,
