@@ -23,7 +23,7 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <BrowserRouter>
+        <BrowserRouter basename="/charity-aid-pro">
           <Routes>
             <Route path="/auth" element={<AuthPage />} />
             <Route
