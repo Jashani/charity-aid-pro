@@ -28,6 +28,9 @@ jobs:
       - run: npm ci
 
       - run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_KEY }}
 
       # SPA fallback so client-side routes work on GitHub Pages
       - run: cp dist/index.html dist/404.html
