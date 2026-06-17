@@ -168,7 +168,6 @@ const Reminders = () => {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <p className="font-medium text-sm">{rule.name}</p>
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider bg-muted rounded-full px-2 py-0.5">{rule.type}</span>
                 </div>
                 <p className="text-sm text-muted-foreground mt-0.5">{rule.description}</p>
                 <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">

@@ -254,18 +254,11 @@ const Discover = () => {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="rounded-xl bg-muted/50 p-3">
                     <p className="text-xs text-muted-foreground">Amount</p>
-                    <p className="text-sm font-bold">
-                      {formatCurrency(selectedOpp.amount)}
-                      {selectedOpp.amountMax && selectedOpp.amountMax !== selectedOpp.amount && ` – ${formatCurrency(selectedOpp.amountMax)}`}
-                    </p>
+                    <p className="text-sm font-bold">{formatAmount(selectedOpp.amount, selectedOpp.amountMax)}</p>
                   </div>
                   <div className="rounded-xl bg-muted/50 p-3">
                     <p className="text-xs text-muted-foreground">Deadline</p>
-                    <p className="text-sm font-bold">
-                      {selectedOpp.deadline
-                        ? new Date(selectedOpp.deadline).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
-                        : "No deadline specified"}
-                    </p>
+                    <p className="text-sm font-bold">{formatDeadlineFull(selectedOpp.deadline)}</p>
                   </div>
                   <div className="rounded-xl bg-muted/50 p-3">
                     <p className="text-xs text-muted-foreground">Duration</p>
@@ -439,6 +432,20 @@ function FunderHistoryPanel({
   );
 }
 
+function formatAmount(amount: number, amountMax?: number): string {
+  if (amount === 0 && !amountMax) return "Unknown";
+  if (amount === 0 && amountMax) return `Up to ${formatCurrency(amountMax)}`;
+  if (amountMax && amountMax !== amount) return `${formatCurrency(amount)} – ${formatCurrency(amountMax)}`;
+  return formatCurrency(amount);
+}
+
+function formatDeadlineFull(deadline: string | undefined): string {
+  if (!deadline || deadline === "unknown") return "Unknown";
+  const d = new Date(deadline);
+  if (isNaN(d.getTime())) return "Unknown";
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
+
 function OpportunityCard({
   opportunity: opp,
   getTagStyle,
@@ -450,8 +457,9 @@ function OpportunityCard({
   getScoreColor: (score: number) => string;
   onDetails: () => void;
 }) {
-  const days = daysUntil(opp.deadline);
-  const isExpired = opp.deadline ? days < 0 : false;
+  const isUnknownDeadline = !opp.deadline || opp.deadline === "unknown";
+  const days = isUnknownDeadline ? null : daysUntil(opp.deadline);
+  const isExpired = days !== null && days < 0;
 
   return (
     <Card className={`hover:shadow-md transition-shadow rounded-xl cursor-pointer ${isExpired ? "opacity-70" : ""}`} onClick={onDetails}>
@@ -485,18 +493,14 @@ function OpportunityCard({
 
           <div className="text-right shrink-0 space-y-1.5">
             <div className={`text-2xl font-bold ${getScoreColor(opp.score)}`}>{opp.score}</div>
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Match</p>
             <p className="text-sm font-semibold">
-              {formatCurrency(opp.amount)}
-              {opp.amountMax && opp.amountMax !== opp.amount && (
-                <span className="text-muted-foreground font-normal"> – {formatCurrency(opp.amountMax)}</span>
-              )}
+              {formatAmount(opp.amount, opp.amountMax)}
             </p>
             <div className={`flex items-center gap-1 text-xs justify-end ${isExpired ? "text-destructive" : "text-muted-foreground"}`}>
               <Clock className="h-3 w-3" />
-              {!opp.deadline ? "No deadline specified" : `${daysUntil(opp.deadline)}d left`}
+              {isUnknownDeadline ? "Unknown deadline" : `${days}d left`}
             </div>
-            </div>
+          </div>
         </div>
       </CardContent>
     </Card>
