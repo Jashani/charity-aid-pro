@@ -30,7 +30,7 @@ const Reports = () => {
   const securedPercentage = totalActive > 0 ? Math.round(((totalActive - expiringSoonValue) / totalActive) * 100) : 0;
 
   const totalApps = opportunities.length;
-  const submitted = opportunities.filter((o) => o.status === "submitted").length;
+  const submitted = opportunities.filter((o) => o.status === "submitted" || o.status === "part_submitted").length;
   const awarded = opportunities.filter((o) => o.status === "awarded").length;
   const rejected = opportunities.filter((o) => o.status === "rejected").length;
   const inProgress = opportunities.filter((o) => ["researching", "applying"].includes(o.status)).length;

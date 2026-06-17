@@ -1,5 +1,5 @@
 export type FundingType = 'grant' | 'trust' | 'lottery' | 'corporate' | 'government';
-export type OpportunityStatus = 'identified' | 'on_hold' | 'researching' | 'applying' | 'submitted' | 'awarded' | 'funds_received' | 'rejected' | 'dismissed';
+export type OpportunityStatus = 'identified' | 'on_hold' | 'researching' | 'applying' | 'part_submitted' | 'submitted' | 'awarded' | 'funds_received' | 'rejected' | 'dismissed';
 
 import type { GatingResult, ScoringBreakdown } from './database.types';
 

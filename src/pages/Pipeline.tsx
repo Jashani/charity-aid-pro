@@ -40,7 +40,8 @@ const columns: { id: OpportunityStatus; label: string; color: string }[] = [
   { id: "on_hold", label: "On Hold", color: "bg-orange-400" },
   { id: "researching", label: "Researching", color: "bg-primary" },
   { id: "applying", label: "Applying", color: "bg-warning" },
-  { id: "submitted", label: "Submitted", color: "bg-secondary" },
+  { id: "part_submitted", label: "Part Submitted", color: "bg-blue-400" },
+  { id: "submitted", label: "Fully Submitted", color: "bg-secondary" },
   { id: "awarded", label: "Awarded", color: "bg-success" },
   { id: "funds_received", label: "Funds Received", color: "bg-emerald-500" },
   { id: "rejected", label: "Rejected", color: "bg-destructive" },
@@ -97,7 +98,7 @@ const emptyEditForm: EditForm = {
 type PendingMove = {
   opp: FundingOpportunity;
   fromStatus: OpportunityStatus;
-  toStatus: "awarded" | "rejected" | "dismissed" | "submitted" | "funds_received";
+  toStatus: "awarded" | "rejected" | "dismissed" | "part_submitted" | "submitted" | "funds_received";
 };
 
 const Pipeline = () => {
@@ -145,7 +146,7 @@ const Pipeline = () => {
     setDragOverCol(null);
     if (!moved || moved.status === targetStatus) return;
 
-    if (targetStatus === "awarded" || targetStatus === "rejected" || targetStatus === "dismissed" || targetStatus === "submitted" || targetStatus === "funds_received") {
+    if (targetStatus === "awarded" || targetStatus === "rejected" || targetStatus === "dismissed" || targetStatus === "part_submitted" || targetStatus === "submitted" || targetStatus === "funds_received") {
       setPendingMove({ opp: moved, fromStatus: moved.status, toStatus: targetStatus });
       setAwardedForm({ expirationDate: "", amountAwarded: String(moved.amount || ""), tranches: "", dateFundingReceived: "" });
       setRejectedForm({ reapplicationDate: "", feedback: "" });
@@ -273,7 +274,8 @@ const Pipeline = () => {
     if (!pendingMove) return;
     const today = new Date().toISOString().slice(0, 10);
     setSubmitting(true);
-    const { error } = await persistStatus(pendingMove.opp.id, "submitted", {
+    const toStatus = pendingMove.toStatus as "part_submitted" | "submitted";
+    const { error } = await persistStatus(pendingMove.opp.id, toStatus, {
       submission_date: today,
       ...(submittedForm.expectedResultsDate ? { expected_results_date: submittedForm.expectedResultsDate } : {}),
     });
@@ -285,13 +287,13 @@ const Pipeline = () => {
     setOpportunities((prev) =>
       prev.map((o) =>
         o.id === pendingMove.opp.id
-          ? { ...o, status: "submitted", submissionDate: today, expectedResultsDate: submittedForm.expectedResultsDate || undefined }
+          ? { ...o, status: toStatus, submissionDate: today, expectedResultsDate: submittedForm.expectedResultsDate || undefined }
           : o
       )
     );
     queryClient.invalidateQueries({ queryKey: ["opportunities"] });
     setPendingMove(null);
-    toast.success("Marked as submitted");
+    toast.success(toStatus === "part_submitted" ? "Marked as part submitted" : "Marked as fully submitted");
   };
 
   const submitFundsReceived = async () => {
@@ -648,7 +650,7 @@ const Pipeline = () => {
                                 <span className="text-muted-foreground">expires {opp.expirationDate}</span>
                               ) : opp.status === "rejected" && opp.reapplicationDate ? (
                                 <span className="text-muted-foreground">reapply {opp.reapplicationDate}</span>
-                              ) : opp.status === "submitted" && opp.expectedResultsDate ? (
+                              ) : (opp.status === "submitted" || opp.status === "part_submitted") && opp.expectedResultsDate ? (
                                 <span className="text-muted-foreground">results {opp.expectedResultsDate}</span>
                               ) : opp.status === "funds_received" && opp.dateFundingReceived ? (
                                 <span className="text-muted-foreground">received {opp.dateFundingReceived}</span>
@@ -765,7 +767,7 @@ const Pipeline = () => {
                 </div>
               )}
 
-              {editForm.status === "submitted" && (
+              {(editForm.status === "submitted" || editForm.status === "part_submitted") && (
                 <div className="rounded-xl border p-4 space-y-3 bg-secondary/5 border-secondary/20">
                   <p className="text-xs font-semibold text-secondary uppercase tracking-wide">Submission Details</p>
                   <div className="grid grid-cols-2 gap-3">
@@ -1154,11 +1156,15 @@ const Pipeline = () => {
       </Dialog>
 
       {/* Submitted Dialog */}
-      <Dialog open={pendingMove?.toStatus === "submitted"} onOpenChange={(open) => { if (!open) cancelPendingMove(); }}>
+      <Dialog open={pendingMove?.toStatus === "submitted" || pendingMove?.toStatus === "part_submitted"} onOpenChange={(open) => { if (!open) cancelPendingMove(); }}>
         <DialogContent className="rounded-xl">
           <DialogHeader>
-            <DialogTitle>Mark as Submitted</DialogTitle>
-            <DialogDescription>Submission date will be recorded as today. Optionally note when you expect a decision.</DialogDescription>
+            <DialogTitle>{pendingMove?.toStatus === "part_submitted" ? "Mark as Part Submitted" : "Mark as Fully Submitted"}</DialogTitle>
+            <DialogDescription>
+              {pendingMove?.toStatus === "part_submitted"
+                ? "One or more stages are still pending. Submission date will be recorded as today."
+                : "All stages complete — awaiting final decision. Submission date will be recorded as today."}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">

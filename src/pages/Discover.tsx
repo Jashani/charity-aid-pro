@@ -370,7 +370,8 @@ function oppStatusInfo(status: OpportunityStatus): { label: string; className: s
     case "awarded":      return { label: "Awarded",        className: "bg-green-100 text-green-800" };
     case "funds_received": return { label: "Funds received", className: "bg-green-100 text-green-800" };
     case "rejected":    return { label: "Rejected",        className: "bg-red-100 text-red-800" };
-    case "submitted":   return { label: "Submitted",       className: "bg-blue-100 text-blue-800" };
+    case "part_submitted": return { label: "Part Submitted",  className: "bg-blue-100 text-blue-800" };
+    case "submitted":      return { label: "Fully Submitted", className: "bg-blue-100 text-blue-800" };
     case "applying":    return { label: "Applying",        className: "bg-yellow-100 text-yellow-800" };
     case "researching": return { label: "Researching",     className: "bg-yellow-100 text-yellow-800" };
     default:            return { label: status,            className: "bg-gray-100 text-gray-500" };
