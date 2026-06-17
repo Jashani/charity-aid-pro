@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Bell, Mail, Clock, RefreshCw, CalendarCheck, Newspaper, Eye, X, Loader2, Pencil } from "lucide-react";
+import { Bell, Mail, Clock, RefreshCw, CalendarCheck, Newspaper, Eye, X, Loader2, Pencil, Search, AlertTriangle } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { toast } from "sonner";
 import { useReminderRules } from "@/hooks/useReminderRules";
@@ -24,18 +24,32 @@ import { useRemoveReminderRecipient } from "@/hooks/useRemoveReminderRecipient";
 import { type ReminderRule } from "@/lib/mock-data";
 
 const typeIcons: Record<string, React.ReactNode> = {
-  deadline: <Clock className="h-5 w-5 text-warning" />,
-  renewal: <RefreshCw className="h-5 w-5 text-primary" />,
+  deadline:       <Clock className="h-5 w-5 text-warning" />,
+  results_chase:  <Search className="h-5 w-5 text-blue-500" />,
+  stale_check:    <RefreshCw className="h-5 w-5 text-muted-foreground" />,
+  funding_expiry: <AlertTriangle className="h-5 w-5 text-destructive" />,
+  renewal:        <RefreshCw className="h-5 w-5 text-primary" />,
   "re-eligibility": <CalendarCheck className="h-5 w-5 text-secondary" />,
-  digest: <Newspaper className="h-5 w-5 text-muted-foreground" />,
+  digest:         <Newspaper className="h-5 w-5 text-muted-foreground" />,
 };
 
 function formatTiming(rule: ReminderRule): string {
-  if (rule.cadence === "before_deadline" && rule.offsetsDays.length > 0) {
-    const sorted = [...rule.offsetsDays].sort((a, b) => b - a);
-    return `${sorted.join(", ")} days before deadline`;
+  const sorted = [...rule.offsetsDays].sort((a, b) => b - a);
+  if (sorted.length === 0) return "";
+  switch (rule.cadence) {
+    case "before_deadline":
+      return `${sorted.join(", ")} days before deadline`;
+    case "results_date": {
+      const parts = sorted.map((d) => d > 0 ? `${d}d before` : d < 0 ? `${Math.abs(d)}d after` : "on the day");
+      return `${parts.join(", ")} expected results date`;
+    }
+    case "stale_opportunity":
+      return `After ${sorted.join(", ")} days without activity`;
+    case "before_expiry":
+      return `${sorted.join(", ")} days before funding expires`;
+    default:
+      return "";
   }
-  return "";
 }
 
 const Reminders = () => {
@@ -90,7 +104,8 @@ const Reminders = () => {
 
   const addDraftOffset = () => {
     const n = parseInt(offsetInput, 10);
-    if (!Number.isInteger(n) || n <= 0 || draftOffsets.includes(n)) {
+    const allowNegative = editingRule?.cadence === "results_date";
+    if (!Number.isInteger(n) || n === 0 || (!allowNegative && n < 0) || draftOffsets.includes(n)) {
       setOffsetInput("");
       return;
     }
@@ -256,14 +271,17 @@ const Reminders = () => {
           <DialogHeader>
             <DialogTitle>Edit reminder timing</DialogTitle>
             <DialogDescription>
-              Choose how many days before the deadline to send reminders for "{editingRule?.name}".
+              {editingRule?.cadence === "before_deadline" && `Days before the deadline to send a reminder for "${editingRule?.name}".`}
+              {editingRule?.cadence === "results_date" && `Days relative to the expected results date for "${editingRule?.name}". Use positive numbers for before (e.g. 7), negative for after/overdue (e.g. -1, -7).`}
+              {editingRule?.cadence === "stale_opportunity" && `Send a reminder when an opportunity has had no activity for this many days.`}
+              {editingRule?.cadence === "before_expiry" && `Days before funding expires to send a warning for "${editingRule?.name}".`}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="flex flex-wrap gap-2 min-h-[36px]">
               {[...draftOffsets].sort((a, b) => b - a).map((n) => (
                 <span key={n} className="flex items-center gap-1 rounded-full bg-muted px-3 py-1 text-sm">
-                  {n}d
+                  {n > 0 ? `${n}d before` : `${Math.abs(n)}d after`}
                   <button
                     type="button"
                     className="ml-1 text-muted-foreground hover:text-foreground"
@@ -280,8 +298,13 @@ const Reminders = () => {
             <div className="flex gap-2">
               <Input
                 type="number"
-                min={1}
-                placeholder="Days before deadline"
+                min={editingRule?.cadence === "results_date" ? undefined : 1}
+                placeholder={
+                  editingRule?.cadence === "results_date" ? "e.g. 7 (before) or -1 (after)" :
+                  editingRule?.cadence === "stale_opportunity" ? "Days without activity" :
+                  editingRule?.cadence === "before_expiry" ? "Days before expiry" :
+                  "Days before deadline"
+                }
                 value={offsetInput}
                 onChange={(e) => setOffsetInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addDraftOffset(); } }}

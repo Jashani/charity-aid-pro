@@ -73,7 +73,7 @@ export interface ReminderRule {
   type: string;
   name: string;
   description: string;
-  cadence: 'before_deadline';
+  cadence: 'before_deadline' | 'results_date' | 'stale_opportunity' | 'before_expiry';
   offsetsDays: number[];
   enabled: boolean;
   lastSent?: string;
