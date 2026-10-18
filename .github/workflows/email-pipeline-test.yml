@@ -22,17 +22,11 @@ jobs:
           python-version: "3.11"
       - run: pip install -r email_parsing/requirements.txt
 
-      - name: Groq plan check (rate-limit headers)
-        run: |
-          echo "LLM_MODEL variable set: ${LLM_MODEL:+yes}${LLM_MODEL:-no}"
-          curl -sS -D headers.txt -o body.json https://api.groq.com/openai/v1/chat/completions \
-            -H "Authorization: Bearer $LLM_API_KEY" -H "Content-Type: application/json" \
-            -d '{"model":"openai/gpt-oss-120b","messages":[{"role":"user","content":"Say OK"}],"reasoning_effort":"low"}'
-          grep -i -E "^HTTP|x-ratelimit" headers.txt
-          python -c "import json;d=json.load(open('body.json'));print(d.get('model'),d.get('usage'),d.get('error'))"
+      - name: New prompts, no Airtable write (10 emails)
+        run: python -m email_parsing.run --count 10 --unread-only --no-store --output artifacts/parsed.json
 
-      - name: Run pipeline (unread only, do not mark as read)
-        run: python -m email_parsing.run --count 25 --unread-only --output artifacts/parsed.json
+      - name: Normal run, emails in Airtable must be skipped (25 emails)
+        run: python -m email_parsing.run --count 25 --unread-only
 
       - name: Summary of parsed output
         if: always()

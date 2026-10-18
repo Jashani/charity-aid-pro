@@ -87,3 +87,35 @@ def test_parse_email_irrelevant_no_opps(monkeypatch):
     result = llm.parse_email({"id": "test", "subject": "spam", "body": ""})
     assert result.classification == "IRRELEVANT"
     assert result.opportunities == []
+
+
+def test_parse_email_drops_repeated_opportunity(monkeypatch):
+    import json
+
+    opp = {
+        "funder_name": "Road Fund", "program_name": "Safer Roads", "amount": None,
+        "amount_max": None, "type": "trust", "deadline": "unknown", "location": "UK",
+        "duration_months": None, "capital_cost": False, "description": "x", "notes": "",
+        "website": None, "contact_name": None, "contact_email": None,
+    }
+    payload = {"classification": "FUNDING_OPPORTUNITY", "confidence": 0.9, "opportunities": [opp, dict(opp)]}
+    monkeypatch.setattr(llm, "_chat", lambda system, user, *, stage, schema: json.dumps(payload))
+    result = llm.parse_email({"id": "test", "subject": "x", "body": "y"})
+    assert len(result.opportunities) == 1
+
+
+def test_chat_retries_once_on_schema_failure(monkeypatch):
+    from types import SimpleNamespace
+
+    calls = []
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            raise RuntimeError("Error code: 400 - json_validate_failed")
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content='{"pass": true}'))])
+
+    fake = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    monkeypatch.setattr(llm, "_client", lambda: fake)
+    assert llm._chat("s", "u", stage="t", schema={"type": "object", "properties": {}}) == '{"pass": true}'
+    assert len(calls) == 2

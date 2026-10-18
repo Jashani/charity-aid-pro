@@ -194,6 +194,11 @@ def _existing_source_ids(email_id: str) -> set[str]:
     }
 
 
+def email_already_stored(email_id: str) -> bool:
+    """True if the table has a record from *email_id* (it was processed before)."""
+    return bool(_existing_source_ids(email_id))
+
+
 def store_parsed_email(parsed: ParsedEmail) -> int:
     """Create Airtable records for *parsed*. Returns the number of records created."""
     if not parsed.opportunities:

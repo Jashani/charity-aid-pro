@@ -131,16 +131,20 @@ The pipeline does these steps for each run:
 
 1. **Fetch.** The pipeline gets the most recent unread emails from the
    Outlook inbox. It uses Microsoft Graph.
-2. **Parse.** The LLM reads each email. It gives a classification
+2. **Skip.** If the table already has a record from the email, the pipeline
+   does not process the email again.
+3. **Parse.** The LLM reads each email. It gives a classification
    (`FUNDING_OPPORTUNITY`, `NEWSLETTER` or `IRRELEVANT`) and a list of
    opportunities. For a newsletter or an irrelevant email, the list is empty.
-3. **Score.** The pipeline does a geography check and an eligibility check
+   If the email gives the same opportunity two times, the pipeline keeps
+   one.
+4. **Score.** The pipeline does a geography check and an eligibility check
    on each opportunity. Then it calculates a score and adds tags. See
    section 6.
-4. **Write.** The pipeline adds each new opportunity to the "Opportunities"
+5. **Write.** The pipeline adds each new opportunity to the "Opportunities"
    table. If a record with the same Source ID is already in the table, the
    pipeline does not change it.
-5. **Mark as read.** The pipeline marks the email as read. It does this only
+6. **Mark as read.** The pipeline marks the email as read. It does this only
    after the parse and the write are successful.
 
 If a step fails, the email stays unread. The next run tries the email again.

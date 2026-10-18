@@ -27,7 +27,9 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The free LLM plan limits tokens per minute; a backlog of 25 emails takes
+    # about 17 minutes.
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4

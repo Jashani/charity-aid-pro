@@ -117,17 +117,23 @@ def _chat(system: str, user: str, *, stage: str, schema: dict[str, Any]) -> str:
     extra_body = {}
     if config.LLM_REASONING_EFFORT != "off":
         extra_body["reasoning_effort"] = config.LLM_REASONING_EFFORT
-    try:
-        resp = client.chat.completions.create(
-            model=config.LLM_MODEL,
-            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-            response_format=response_format,
-            temperature=0,
-            timeout=config.LLM_TIMEOUT_SECONDS,
-            extra_body=extra_body or None,
-        )
-    except Exception as exc:
-        raise LLMError(f"{stage}: LLM call failed: {exc}") from exc
+    for attempt in range(2):
+        try:
+            resp = client.chat.completions.create(
+                model=config.LLM_MODEL,
+                messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+                response_format=response_format,
+                temperature=0,
+                timeout=config.LLM_TIMEOUT_SECONDS,
+                extra_body=extra_body or None,
+            )
+            break
+        except Exception as exc:
+            # Groq rejects output that breaks the schema; one new try usually passes.
+            if attempt == 0 and "json_validate_failed" in str(exc):
+                logger.info("%s: output did not match the schema — trying again", stage)
+                continue
+            raise LLMError(f"{stage}: LLM call failed: {exc}") from exc
 
     content = (resp.choices[0].message.content or "").strip()
     if not content:
@@ -177,11 +183,20 @@ def parse_email(email: dict[str, Any]) -> ParseResult:
         raw_opps = [raw_opps]
 
     opportunities: list[FundingOpportunity] = []
+    seen: set[tuple[str, str]] = set()
     for idx, item in enumerate(raw_opps):
         try:
-            opportunities.append(_to_opportunity(item, idx))
+            opp = _to_opportunity(item, idx)
         except Exception as exc:
             logger.warning("Skipping malformed opportunity %s: %s", item, exc)
+            continue
+        # Newsletters sometimes list the same fund twice.
+        key = (opp.funder_name.casefold().strip(), opp.program_name.casefold().strip())
+        if key in seen:
+            logger.info("Skipping repeated opportunity %s — %s", opp.funder_name, opp.program_name)
+            continue
+        seen.add(key)
+        opportunities.append(opp)
 
     return ParseResult(
         classification=classification,

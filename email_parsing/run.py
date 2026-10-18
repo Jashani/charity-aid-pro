@@ -102,6 +102,16 @@ def main(argv: list[str] | None = None) -> int:
         subject = (email.get("subject") or "")[:80]
         log.info("---- %s | %s", (email.get("receivedDateTime") or "")[:10], subject)
 
+        if do_store and storage.email_already_stored(eid):
+            log.info("  already in Airtable — skipped")
+            if args.mark_read:
+                try:
+                    outlook.mark_as_read(eid)
+                except Exception as exc:
+                    log.warning("Could not mark %s as read: %s", eid, exc)
+            processed += 1
+            continue
+
         try:
             parsed = process_email(email, do_score=not args.no_score)
         except Exception as exc:

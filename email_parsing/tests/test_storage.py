@@ -125,3 +125,10 @@ def test_store_no_opportunities_makes_no_requests(airtable, parsed_email):
     parsed_email.opportunities = []
     assert storage.store_parsed_email(parsed_email) == 0
     assert created == []
+
+
+def test_email_already_stored(airtable):
+    _, state = airtable
+    assert storage.email_already_stored("msg-123") is False
+    state["existing"] = ["msg-123#0"]
+    assert storage.email_already_stored("msg-123") is True
