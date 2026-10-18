@@ -17,7 +17,7 @@ import re
 from datetime import date, datetime, timezone
 from typing import Any
 
-from .llm import LLMError, _chat, _parse_json
+from .llm import LLMError, _chat, _parse_json, load_prompt
 from .schema import FundingOpportunity
 
 
@@ -56,25 +56,16 @@ def _geography_keyword_fallback(location: str) -> dict[str, Any]:
     return {"pass": True, "reasoning": "No exclusion match — assumed eligible"}
 
 
+_GEOGRAPHY_SCHEMA = {
+    "type": "object",
+    "properties": {"pass": {"type": "boolean"}, "reasoning": {"type": "string"}},
+}
+
+
 def _geography_with_llm(location: str) -> dict[str, Any]:
-    prompt = f"""You are assessing geographic eligibility for a charity based in Kent, England.
-
-Grant location/geographic scope: "{location}"
-
-Return JSON only:
-{{
-  "pass": true | false,
-  "reasoning": "<one sentence>"
-}}
-
-Rules:
-- pass=true if the location includes Kent (e.g. Kent, South East, England,
-  UK-wide, nationwide) OR if the location is unspecified.
-- pass=false ONLY when explicitly restricted to a region that excludes Kent
-  (Scotland, Wales, Northern Ireland, West Midlands, etc.).
-"""
     try:
-        raw = _chat(prompt, stage="geography")
+        raw = _chat(load_prompt("geography"), f"Location rule: {location or 'unknown'}",
+                    stage="geography", schema=_GEOGRAPHY_SCHEMA)
         data = _parse_json(raw, stage="geography")
         if not isinstance(data, dict) or "pass" not in data:
             raise LLMError("geography: missing 'pass'")
@@ -167,53 +158,33 @@ def _score_keyword_fallback(opp: FundingOpportunity) -> dict[str, Any]:
     }
 
 
+_SCORE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "pass": {"type": "boolean"},
+        "activity_score": {"type": "integer"},
+        "audience_score": {"type": "integer"},
+        "reasoning": {"type": "string"},
+    },
+}
+
+
 def _score_with_llm(opp: FundingOpportunity) -> dict[str, Any]:
     """Single LLM call: eligibility gate + two-dimension mission-alignment score."""
-    amount_str = f"£{opp.amount:,.0f}"
+    amount_str = f"£{opp.amount:,.0f}" if opp.amount else "unknown"
     if opp.amount_max and opp.amount_max > opp.amount:
-        amount_str += f"–£{opp.amount_max:,.0f}"
+        amount_str = f"up to £{opp.amount_max:,.0f}" if not opp.amount else f"{amount_str}–£{opp.amount_max:,.0f}"
 
-    text = f"{opp.funder_name} — {opp.program_name}: {opp.description}"
-
-    prompt = f"""Score this grant for Music4Wellbeing (M4W), a Kent charity providing group \
-therapeutic music sessions and associated activities for people in need due to physical or \
-mental ill health, disability, or age — including dementia, Parkinson's, and their carers.
-
-Opportunity: {text}
-Award: {amount_str}
-
-Score on TWO dimensions (0–100 integer each):
-
-ACTIVITY ALIGNMENT — how well does this match "group therapeutic music sessions and \
-associated creative activities led by experienced practitioners"?
-0–19: Wrong sector entirely (STEM, building repair, legal/asylum, sport facilities, \
-tax/financial advice, ecology)
-20–39: Vaguely arts/creative but not therapeutic or participatory in nature
-40–59: Broadly music/arts/creative with some wellbeing angle, not specifically \
-therapeutic or group-based
-60–79: Music, singing, or creative arts with clear therapeutic or community wellbeing focus
-80–100: Specifically therapeutic/participatory music or arts — group sessions, \
-practitioner-led, or directly matches M4W's activity model
-
-AUDIENCE ALIGNMENT — how well does this match "people in need due to ill health, \
-disability or age — dementia, Parkinson's, and their carers"?
-0–19: Wrong audience (professionals, healthy general public, schools, animals)
-20–39: Open community grants with no focus on vulnerable or marginalised groups
-40–59: Some vulnerability focus (e.g. deprivation, social isolation) but not \
-specifically health/age/disability
-60–79: Targets mental health, older people, disability, carers, loneliness, or similar
-80–100: Specifically targets dementia, Parkinson's, older adults with health needs, \
-physical/mental ill health, disability, or carers
-
-Final score = activity×40% + audience×60%. Set pass=false if final score < 20 or \
-charity is clearly ineligible.
-
-Return JSON only: \
-{{"pass": true|false, "activity_score": <0-100>, "audience_score": <0-100>, \
-"reasoning": "<one sentence covering both dimensions>"}}"""
+    user = (
+        f"Funder: {opp.funder_name}\n"
+        f"Programme: {opp.program_name}\n"
+        f"Award: {amount_str}\n"
+        f"Description: {opp.description}\n"
+        f"Notes: {opp.notes}"
+    )
 
     try:
-        raw = _chat(prompt, stage="score")
+        raw = _chat(load_prompt("score"), user, stage="score", schema=_SCORE_SCHEMA)
         data = _parse_json(raw, stage="score")
         if not isinstance(data, dict) or "pass" not in data \
                 or "activity_score" not in data or "audience_score" not in data:

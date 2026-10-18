@@ -20,7 +20,7 @@ This document uses ASD-STE100 (Simplified Technical English).
 | `storage.py` | Airtable write. It adds new records and does not change records that are already in the table. |
 | `schema.py` | Pydantic data models |
 | `config.py` | Environment variables |
-| `prompts/parse.txt` | The LLM prompt for the email parse |
+| `prompts/` | The LLM prompts: `profile.txt`, `parse.txt`, `geography.txt`, `score.txt` |
 | `tests/` | Unit tests |
 
 ## Data flow
@@ -38,6 +38,8 @@ This document uses ASD-STE100 (Simplified Technical English).
 
 - If you add a field to `storage.opp_to_fields()`, add the same field in
   Airtable first. The field name must be the same.
+- If you change the output fields of a prompt, change its JSON schema
+  (`llm.py` or `scoring.py`) also.
 - Keep the `Source ID` format `{emailId}#{idx}`. The pipeline uses it to
   prevent duplicate records.
 - Do not connect to Outlook, the LLM or Airtable in the tests. Use a fake

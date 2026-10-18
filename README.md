@@ -22,7 +22,7 @@ This document uses ASD-STE100 (Simplified Technical English).
                                          │
                                          ▼
                             ┌──────────────────────────┐
-                            │ LLM (Groq, Llama 3.3 70B)│
+                            │ LLM (Groq, GPT-OSS 120B) │
                             └──────────────────────────┘
 ```
 
@@ -52,7 +52,7 @@ charity-aid-pro/
 │   ├── storage.py                  # Airtable write
 │   ├── schema.py                   # Data models (Pydantic)
 │   ├── config.py                   # Environment variables
-│   ├── prompts/parse.txt           # The LLM prompt for the email parse
+│   ├── prompts/                    # The LLM prompts (see section 9)
 │   └── tests/                      # Unit tests
 └── .github/workflows/
     └── email-pipeline.yml          # Daily schedule (09:00 UTC)
@@ -184,7 +184,9 @@ repository and to the Airtable base.
 | Variable | Default value |
 |---|---|
 | `LLM_BASE_URL` | `https://api.groq.com/openai/v1` |
-| `LLM_MODEL` | `llama-3.3-70b-versatile` |
+| `LLM_MODEL` | `openai/gpt-oss-120b` |
+| `LLM_REASONING_EFFORT` | `low` |
+| `LLM_STRICT_SCHEMA` | `true` |
 | `MSAL_CLIENT_ID` | The registered Microsoft Entra app ID |
 | `AIRTABLE_BASE_ID` | `apptkzNqMPnlzdyhA` (Music4Wellbeing) |
 | `AIRTABLE_OPPORTUNITIES_TABLE` | `tbla8L8gUX6xN1XeO` (Opportunities) |
@@ -249,7 +251,8 @@ The pipeline does these checks on each opportunity:
 | Strong Match | The score is 80 or more |
 | High Value | The maximum amount is £30,000 or more |
 
-The LLM can also add the tag `Capital Cost`.
+The pipeline also adds the tag `Capital Cost` if the LLM finds that the
+money is for buildings or equipment.
 
 ---
 
@@ -327,7 +330,9 @@ The pipeline reads these environment variables ([config.py](email_parsing/config
 |---|---|---|---|
 | `LLM_API_KEY` | Yes | — | API key for the LLM provider |
 | `LLM_BASE_URL` | No | `https://api.groq.com/openai/v1` | Any OpenAI-compatible endpoint |
-| `LLM_MODEL` | No | `llama-3.3-70b-versatile` | LLM model name |
+| `LLM_MODEL` | No | `openai/gpt-oss-120b` | LLM model name |
+| `LLM_REASONING_EFFORT` | No | `low` | Reasoning effort for reasoning models. Set `off` for a model that does not reason. |
+| `LLM_STRICT_SCHEMA` | No | `true` | `true`: the LLM must give JSON that agrees with the schema. Set `false` for a model that does not support structured outputs. |
 | `LLM_TIMEOUT_SECONDS` | No | `60` | Time limit for one LLM call |
 | `AIRTABLE_TOKEN` | Yes, for the write | — | Airtable personal access token |
 | `AIRTABLE_BASE_ID` | No | `apptkzNqMPnlzdyhA` | Airtable base ID |
@@ -342,16 +347,47 @@ tables in Airtable. You cannot rename the fields (see section 3).
 
 ---
 
-## 9. Change the LLM prompt
+## 9. LLM model and prompts
 
-The parse prompt is in `email_parsing/prompts/parse.txt`.
+### 9.1 Model
 
-1. Edit the file.
+The pipeline uses the model `openai/gpt-oss-120b` on the Groq free plan.
+Groq stopped `llama-3.3-70b-versatile` for free accounts on 16 August 2026
+([Groq deprecations](https://console.groq.com/docs/deprecations)).
+
+The free plan has limits for each model. For `openai/gpt-oss-120b`, the
+limits are approximately 8,000 tokens each minute and 200,000 tokens each
+day ([Groq rate limits](https://console.groq.com/docs/rate-limits)). If the
+pipeline goes above the limit for each minute, it waits and tries again. If
+it goes above the limit for each day, set the variable `LLM_MODEL` to
+`openai/gpt-oss-20b`. That model has a different limit.
+
+If you change the model, make sure that the model supports structured
+outputs ([Groq structured outputs](https://console.groq.com/docs/structured-outputs)).
+If it does not, set `LLM_STRICT_SCHEMA` to `false`.
+
+### 9.2 Prompts
+
+The prompts are in `email_parsing/prompts/`:
+
+| File | Function |
+|---|---|
+| `profile.txt` | The description of Music4Wellbeing. The other prompts use it. |
+| `parse.txt` | Finds the opportunities in an email and fills in the fields |
+| `geography.txt` | Checks if a charity in Kent can apply |
+| `score.txt` | Gives the activity score and the audience score |
+
+To change a prompt:
+
+1. Edit the file. Use short sentences and one instruction in each sentence.
 2. Commit and push the change.
 
-You do not have to change the code. The pipeline checks each LLM result
-against the data model. If an opportunity has incorrect data, the pipeline
-ignores that opportunity and writes a warning in the log.
+Each prompt is the system message. The email or the opportunity is the user
+message. The JSON schemas are in `llm.py` and `scoring.py`. If you add or
+remove an output field, change the schema and the prompt together.
+
+If an opportunity has incorrect data, the pipeline ignores that opportunity
+and writes a warning in the log.
 
 ---
 
@@ -365,6 +401,9 @@ ignores that opportunity and writes a warning in the log.
 | The log shows `No cached MSAL account` or `Cached MSAL token expired` | The Outlook login expired | Do procedure 5.3 again. |
 | No new records in Airtable | No unread emails, or the LLM found no relevant opportunities | Look at the workflow log. Each email has a line with the classification and the number of opportunities. |
 | The same email is processed each day | The write to Airtable fails, so the email stays unread | Look at the workflow log for the error. |
+| The log shows `LLM call failed` with `429` | The Groq free plan limit for each day is used | Wait until 00:00 UTC, or change `LLM_MODEL` (see section 9.1). |
+| The log shows `LLM call failed` with `400` | The model is stopped, or it does not support structured outputs | Make sure that the model is in the [Groq model list](https://console.groq.com/docs/models). See section 9.1. |
+| The workflow does not run each day | GitHub stops scheduled workflows in a public repository after 60 days with no activity | Go to **Actions → Email parsing pipeline** and click **Enable workflow**. |
 
 ---
 

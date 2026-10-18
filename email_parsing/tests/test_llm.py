@@ -25,28 +25,53 @@ def test_parse_email_envelope(monkeypatch):
         "confidence": 0.9,
         "opportunities": [
             {
-                "id": "opp-1",
                 "funder_name": "Foo",
-                "program_name": "Bar",
-                "amount": 1000,
+                "program_name": None,
+                "amount": None,
                 "amount_max": 5000,
                 "type": "trust",
                 "deadline": "2026-12-31",
                 "location": "UK",
-                "duration_months": 12,
-                "status": "identified",
+                "duration_months": None,
+                "capital_cost": True,
                 "description": "Test",
+                "notes": "",
                 "website": "https://example.com",
+                "contact_name": None,
+                "contact_email": None,
             }
         ],
     }
     import json
 
-    monkeypatch.setattr(llm, "_chat", lambda prompt, *, stage: json.dumps(payload))
+    monkeypatch.setattr(llm, "_chat", lambda system, user, *, stage, schema: json.dumps(payload))
     result = llm.parse_email({"id": "test", "subject": "x", "body": "y"})
     assert result.classification == "FUNDING_OPPORTUNITY"
     assert len(result.opportunities) == 1
-    assert result.opportunities[0].funder_name == "Foo"
+    opp = result.opportunities[0]
+    assert opp.funder_name == "Foo"
+    assert opp.id == "opp-0"
+    assert opp.program_name == "Unknown"
+    assert opp.amount == 0
+    assert opp.duration_months == 12
+    assert opp.tags == ["Capital Cost"]
+
+
+def test_strict_schema_requires_all_keys():
+    schema = llm._strict(llm.PARSE_SCHEMA)
+    assert schema["additionalProperties"] is False
+    assert schema["required"] == ["classification", "confidence", "opportunities"]
+    item = schema["properties"]["opportunities"]["items"]
+    assert item["additionalProperties"] is False
+    assert set(item["required"]) == set(item["properties"])
+
+
+def test_prompts_include_profile():
+    for name in ("parse", "score"):
+        text = llm.load_prompt(name)
+        assert "{{" not in text
+        assert "Music4Wellbeing" in text
+    assert "{{" not in llm.load_prompt("geography")
 
 
 def test_parse_email_irrelevant_no_opps(monkeypatch):
@@ -55,7 +80,7 @@ def test_parse_email_irrelevant_no_opps(monkeypatch):
     monkeypatch.setattr(
         llm,
         "_chat",
-        lambda prompt, *, stage: json.dumps(
+        lambda system, user, *, stage, schema: json.dumps(
             {"classification": "IRRELEVANT", "confidence": 0.95, "opportunities": []}
         ),
     )

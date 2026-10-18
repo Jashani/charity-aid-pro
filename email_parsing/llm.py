@@ -1,13 +1,10 @@
 """LLM-driven email parsing.
 
-Single call: classify + extract. The model returns an envelope:
-    {
-        "classification": "FUNDING_OPPORTUNITY|NEWSLETTER|IRRELEVANT",
-        "confidence": 0.0-1.0,
-        "opportunities": [ ... ]
-    }
+Single call: classify + extract. The model returns PARSE_SCHEMA. For
+NEWSLETTER / IRRELEVANT classifications, opportunities is `[]`.
 
-For NEWSLETTER / IRRELEVANT classifications, opportunities is `[]`.
+Each prompt in prompts/ is the system message; the data (email, opportunity)
+goes in the user message so the model treats it as data, not instructions.
 """
 
 from __future__ import annotations
@@ -35,8 +32,56 @@ class LLMError(RuntimeError):
 
 
 @lru_cache(maxsize=None)
-def _load_prompt(name: str) -> str:
-    return (_PROMPTS_DIR / f"{name}.txt").read_text(encoding="utf-8")
+def load_prompt(name: str) -> str:
+    """Read prompts/<name>.txt and insert the shared charity profile."""
+    text = (_PROMPTS_DIR / f"{name}.txt").read_text(encoding="utf-8")
+    if "{{profile}}" in text:
+        text = text.replace("{{profile}}", load_prompt("profile").strip())
+    return text
+
+
+def _nullable(type_: str) -> dict[str, Any]:
+    return {"type": [type_, "null"]}
+
+
+# Strict JSON schemas: every key is required and no other keys are allowed.
+_OPPORTUNITY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "funder_name": {"type": "string"},
+        "program_name": _nullable("string"),
+        "amount": _nullable("number"),
+        "amount_max": _nullable("number"),
+        "type": {"type": "string", "enum": ["grant", "trust", "lottery", "corporate", "government"]},
+        "deadline": {"type": "string"},
+        "location": {"type": "string"},
+        "duration_months": _nullable("integer"),
+        "capital_cost": {"type": "boolean"},
+        "description": {"type": "string"},
+        "notes": {"type": "string"},
+        "website": _nullable("string"),
+        "contact_name": _nullable("string"),
+        "contact_email": _nullable("string"),
+    },
+}
+PARSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "classification": {"type": "string", "enum": ["FUNDING_OPPORTUNITY", "NEWSLETTER", "IRRELEVANT"]},
+        "confidence": {"type": "number"},
+        "opportunities": {"type": "array", "items": _OPPORTUNITY_SCHEMA},
+    },
+}
+
+
+def _strict(schema: dict[str, Any]) -> dict[str, Any]:
+    """Mark every object in *schema* as closed with all keys required."""
+    if schema.get("type") == "object":
+        props = {k: _strict(v) for k, v in schema["properties"].items()}
+        return {**schema, "properties": props, "required": list(props), "additionalProperties": False}
+    if schema.get("type") == "array":
+        return {**schema, "items": _strict(schema["items"])}
+    return schema
 
 
 @lru_cache(maxsize=1)
@@ -60,14 +105,26 @@ def _strip_fences(text: str) -> str:
     return text.strip()
 
 
-def _chat(prompt: str, *, stage: str) -> str:
+def _chat(system: str, user: str, *, stage: str, schema: dict[str, Any]) -> str:
     client = _client()
+    if config.LLM_STRICT_SCHEMA:
+        response_format = {
+            "type": "json_schema",
+            "json_schema": {"name": stage, "strict": True, "schema": _strict(schema)},
+        }
+    else:
+        response_format = {"type": "json_object"}
+    extra_body = {}
+    if config.LLM_REASONING_EFFORT != "off":
+        extra_body["reasoning_effort"] = config.LLM_REASONING_EFFORT
     try:
         resp = client.chat.completions.create(
             model=config.LLM_MODEL,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+            response_format=response_format,
             temperature=0,
             timeout=config.LLM_TIMEOUT_SECONDS,
+            extra_body=extra_body or None,
         )
     except Exception as exc:
         raise LLMError(f"{stage}: LLM call failed: {exc}") from exc
@@ -86,18 +143,28 @@ def _parse_json(raw: str, *, stage: str) -> Any:
         raise LLMError(f"{stage}: invalid JSON: {exc}") from exc
 
 
+def _to_opportunity(item: dict[str, Any], idx: int) -> FundingOpportunity:
+    """Convert one LLM opportunity to the model; fill the defaults the prompt leaves null."""
+    item = dict(item)
+    item["id"] = f"opp-{idx}"
+    if item.get("amount") is None:
+        item["amount"] = 0
+    if item.get("duration_months") is None:
+        item["duration_months"] = 12
+    item["tags"] = ["Capital Cost"] if item.pop("capital_cost", False) else []
+    return FundingOpportunity(**item)
+
+
 def parse_email(email: dict[str, Any]) -> ParseResult:
     """Classify and extract opportunities from a single email in one LLM call."""
-    subject = email.get("subject", "")
-    body = (email.get("body") or "")[:8000]
-
-    prompt = (
-        _load_prompt("parse")
-        .replace("{{subject}}", subject)
-        .replace("{{body}}", body)
+    user = (
+        f"Email date: {(email.get('receivedDateTime') or '')[:10] or 'unknown'}\n"
+        f"From: {email.get('from', '')}\n"
+        f"Subject: {email.get('subject', '')}\n\n"
+        f"{(email.get('body') or '')[:8000]}"
     )
 
-    raw = _chat(prompt, stage="parse")
+    raw = _chat(load_prompt("parse"), user, stage="parse", schema=PARSE_SCHEMA)
     data = _parse_json(raw, stage="parse")
 
     if not isinstance(data, dict):
@@ -110,9 +177,9 @@ def parse_email(email: dict[str, Any]) -> ParseResult:
         raw_opps = [raw_opps]
 
     opportunities: list[FundingOpportunity] = []
-    for item in raw_opps:
+    for idx, item in enumerate(raw_opps):
         try:
-            opportunities.append(FundingOpportunity(**item))
+            opportunities.append(_to_opportunity(item, idx))
         except Exception as exc:
             logger.warning("Skipping malformed opportunity %s: %s", item, exc)
 
