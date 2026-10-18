@@ -1,0 +1,60 @@
+# TEMPORARY: test run of the pipeline from this branch. Delete before merge.
+name: Email pipeline test (temporary)
+
+on:
+  push:
+    branches: [claude/intelligent-archimedes-2fzk00]
+    paths: [.github/workflows/email-pipeline-test.yml]
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      LLM_API_KEY:          ${{ secrets.LLM_API_KEY }}
+      MSAL_TOKEN_CACHE_B64: ${{ secrets.MSAL_TOKEN_CACHE_B64 }}
+      AIRTABLE_TOKEN:       ${{ secrets.AIRTABLE_TOKEN }}
+      LLM_MODEL:            ${{ vars.LLM_MODEL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r email_parsing/requirements.txt
+
+      - name: Groq plan check (rate-limit headers)
+        run: |
+          echo "LLM_MODEL variable set: ${LLM_MODEL:+yes}${LLM_MODEL:-no}"
+          curl -sS -D headers.txt -o body.json https://api.groq.com/openai/v1/chat/completions \
+            -H "Authorization: Bearer $LLM_API_KEY" -H "Content-Type: application/json" \
+            -d '{"model":"openai/gpt-oss-120b","messages":[{"role":"user","content":"Say OK"}],"reasoning_effort":"low"}'
+          grep -i -E "^HTTP|x-ratelimit" headers.txt
+          python -c "import json;d=json.load(open('body.json'));print(d.get('model'),d.get('usage'),d.get('error'))"
+
+      - name: Run pipeline (unread only, do not mark as read)
+        run: python -m email_parsing.run --count 25 --unread-only --output artifacts/parsed.json
+
+      - name: Summary of parsed output
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, collections
+          data = json.load(open("artifacts/parsed.json"))
+          emails = data if isinstance(data, list) else data.get("emails", data)
+          print("emails:", len(emails))
+          print(collections.Counter(e["classification"] for e in emails))
+          for e in emails:
+              print("-", e["classification"], "|", e["email_subject"][:70])
+              for o in e["opportunities"]:
+                  g = (o.get("gating") or {})
+                  print("    *", o["funder_name"], "|", o["program_name"], "| score", o.get("final_score"),
+                        "|", o.get("status"), "|", g.get("status"), "| deadline", o["deadline"],
+                        "| web", bool(o.get("website")), "| email", bool(o.get("contact_email")))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: parsed-emails-test
+          path: artifacts/parsed.json
+          if-no-files-found: ignore
+          retention-days: 7
