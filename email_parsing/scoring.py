@@ -17,7 +17,7 @@ import re
 from datetime import date, datetime, timezone
 from typing import Any
 
-from .llm import LLMError, _chat, _parse_json, load_prompt
+from .llm import DailyLimitError, LLMError, _chat, _parse_json, load_prompt
 from .schema import FundingOpportunity
 
 
@@ -62,7 +62,18 @@ _GEOGRAPHY_SCHEMA = {
 }
 
 
+# Exact (normalised) locations that clearly include Kent. Anything else goes to the LLM.
+GEO_CLEAR_PASS = {
+    "", "unknown", "n/a", "not specified", "uk", "united kingdom", "uk-wide", "uk wide",
+    "england", "great britain", "national", "nationwide", "kent", "kent and medway",
+    "south east", "south east england", "england and wales", "england & wales",
+    "england, scotland and wales", "england, scotland, wales", "england, wales, scotland, northern ireland",
+}
+
+
 def _geography_with_llm(location: str) -> dict[str, Any]:
+    if re.sub(r"\s+", " ", (location or "").casefold().replace("the ", "")).strip(" .") in GEO_CLEAR_PASS:
+        return {"pass": True, "reasoning": "Location includes Kent"}
     try:
         raw = _chat(load_prompt("geography"), f"Location rule: {location or 'unknown'}",
                     stage="geography", schema=_GEOGRAPHY_SCHEMA)
@@ -71,6 +82,8 @@ def _geography_with_llm(location: str) -> dict[str, Any]:
             raise LLMError("geography: missing 'pass'")
         data.setdefault("reasoning", "")
         return {"pass": bool(data["pass"]), "reasoning": data["reasoning"]}
+    except DailyLimitError:
+        raise
     except Exception as exc:
         logger.warning("Geography LLM call failed (%s) — using keyword fallback", exc)
         return _geography_keyword_fallback(location)
@@ -203,6 +216,8 @@ def _score_with_llm(opp: FundingOpportunity) -> dict[str, Any]:
             "final_score": final,
             "reasoning": data["reasoning"],
         }
+    except DailyLimitError:
+        raise
     except Exception as exc:
         logger.warning("Score LLM call failed (%s) — using keyword fallback", exc)
         return _score_keyword_fallback(opp)

@@ -233,7 +233,8 @@ Do this procedure for the first setup. Do it again if the login expires.
 The pipeline does these checks on each opportunity:
 
 1. **Geography check.** The LLM checks that the funder accepts applications
-   from Kent. If the LLM call fails, a keyword list does the check. If the
+   from Kent. If the location is clear (for example "UK" or "England"), the
+   pipeline does not use the LLM. If the LLM call fails, a keyword list does the check. If the
    check fails, the score is 0 and Gating is `Failed`.
 2. **Eligibility check and score.** The LLM gives two scores from 0 to 100:
    - **Activity score:** how well the activity agrees with group therapeutic
@@ -360,11 +361,18 @@ Groq stopped `llama-3.3-70b-versatile` for free accounts on 16 August 2026
 ([Groq deprecations](https://console.groq.com/docs/deprecations)).
 
 The free plan has limits for each model. For `openai/gpt-oss-120b`, the
-limits are approximately 8,000 tokens each minute and 200,000 tokens each
-day ([Groq rate limits](https://console.groq.com/docs/rate-limits)). If the
-pipeline goes above the limit for each minute, it waits and tries again. If
-it goes above the limit for each day, set the variable `LLM_MODEL` to
-`openai/gpt-oss-20b`. That model has a different limit.
+limits are 8,000 tokens each minute and 200,000 tokens each day
+([Groq rate limits](https://console.groq.com/docs/rate-limits)). A test on
+18 October 2026 used approximately 6,500 tokens for each email. Thus the
+pipeline can process approximately 30 emails each day.
+
+- If the pipeline goes above the limit for each minute, it waits and tries
+  again.
+- If the pipeline goes above the limit for each day, it stops. The emails
+  that it did not process stay unread. The next run processes them.
+- If there are many unread emails, the pipeline needs some days to process
+  all of them. To make it faster, you can set the variable `LLM_MODEL` to
+  `openai/gpt-oss-20b` for some days. That model has a separate limit.
 
 If you change the model, make sure that the model supports structured
 outputs ([Groq structured outputs](https://console.groq.com/docs/structured-outputs)).
@@ -405,7 +413,7 @@ and writes a warning in the log.
 | The log shows `No cached MSAL account` or `Cached MSAL token expired` | The Outlook login expired | Do procedure 5.3 again. |
 | No new records in Airtable | No unread emails, or the LLM found no relevant opportunities | Look at the workflow log. Each email has a line with the classification and the number of opportunities. |
 | The same email is processed each day | The write to Airtable fails, so the email stays unread | Look at the workflow log for the error. |
-| The log shows `LLM call failed` with `429` | The Groq free plan limit for each day is used | Wait until 00:00 UTC, or change `LLM_MODEL` (see section 9.1). |
+| The log shows `Daily LLM token limit reached — stopping` | The Groq free plan limit for each day is used | Do nothing. The next run processes the unread emails. See section 9.1. |
 | The log shows `LLM call failed` with `400` | The model is stopped, or it does not support structured outputs | Make sure that the model is in the [Groq model list](https://console.groq.com/docs/models). See section 9.1. |
 | The workflow does not run each day | GitHub stops scheduled workflows in a public repository after 60 days with no activity | Go to **Actions → Email parsing pipeline** and click **Enable workflow**. |
 

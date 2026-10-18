@@ -114,6 +114,10 @@ def main(argv: list[str] | None = None) -> int:
 
         try:
             parsed = process_email(email, do_score=not args.no_score)
+        except llm.DailyLimitError as exc:
+            failed += 1
+            log.error("Daily LLM token limit reached — stopping. Unprocessed emails stay unread. %s", exc)
+            break
         except Exception as exc:
             failed += 1
             log.error("FAILED on %s: %s", eid, exc, exc_info=True)

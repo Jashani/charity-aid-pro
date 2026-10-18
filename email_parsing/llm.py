@@ -31,6 +31,10 @@ class LLMError(RuntimeError):
     """Raised when an LLM call or its output cannot be processed."""
 
 
+class DailyLimitError(LLMError):
+    """The provider's daily token limit is used up. Later calls will fail too."""
+
+
 @lru_cache(maxsize=None)
 def load_prompt(name: str) -> str:
     """Read prompts/<name>.txt and insert the shared charity profile."""
@@ -133,6 +137,8 @@ def _chat(system: str, user: str, *, stage: str, schema: dict[str, Any]) -> str:
             if attempt == 0 and "json_validate_failed" in str(exc):
                 logger.info("%s: output did not match the schema — trying again", stage)
                 continue
+            if "tokens per day" in str(exc):
+                raise DailyLimitError(f"{stage}: daily token limit reached: {exc}") from exc
             raise LLMError(f"{stage}: LLM call failed: {exc}") from exc
 
     content = (resp.choices[0].message.content or "").strip()

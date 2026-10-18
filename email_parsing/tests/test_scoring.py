@@ -145,3 +145,24 @@ def test_no_strong_match_tag_below_80(opportunity, monkeypatch):
     monkeypatch.setattr(scoring, "_score_with_llm", _stub_pass(60, 70))
     result = scoring.score_opportunity(opportunity)
     assert "Strong Match" not in result.tags
+
+
+def test_geography_clear_location_skips_llm(monkeypatch):
+    def fail(*a, **k):
+        raise AssertionError("LLM must not be called")
+    monkeypatch.setattr(scoring, "_chat", fail)
+    assert scoring._geography_with_llm("United Kingdom")["pass"] is True
+    assert scoring._geography_with_llm("The UK")["pass"] is True
+
+
+def test_daily_limit_is_not_hidden_by_fallback(opportunity, monkeypatch):
+    import pytest
+    from email_parsing.llm import DailyLimitError
+
+    def limit(*a, **k):
+        raise DailyLimitError("tokens per day")
+    monkeypatch.setattr(scoring, "_chat", limit)
+    with pytest.raises(DailyLimitError):
+        scoring._score_with_llm(opportunity)
+    with pytest.raises(DailyLimitError):
+        scoring._geography_with_llm("Hampshire")
