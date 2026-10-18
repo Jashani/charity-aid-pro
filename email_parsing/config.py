@@ -33,9 +33,13 @@ MSAL_CACHE_FILE: str = _env(
 )
 MSAL_TOKEN_CACHE_B64: str = _env("MSAL_TOKEN_CACHE_B64")
 
-# ── Supabase ─────────────────────────────────────────────────────────────────
-SUPABASE_URL: str = _env("SUPABASE_URL")
-SUPABASE_KEY: str = _env("SUPABASE_KEY")
+# ── Airtable ─────────────────────────────────────────────────────────────────
+# Personal access token with data.records:read + data.records:write on the base.
+AIRTABLE_TOKEN: str = _env("AIRTABLE_TOKEN")
+# IDs of the Music4Wellbeing base and its tables. IDs (not names) survive renames.
+AIRTABLE_BASE_ID: str = _env("AIRTABLE_BASE_ID", "apptkzNqMPnlzdyhA")
+AIRTABLE_OPPORTUNITIES_TABLE: str = _env("AIRTABLE_OPPORTUNITIES_TABLE", "tbla8L8gUX6xN1XeO")
+AIRTABLE_ORGANISATIONS_TABLE: str = _env("AIRTABLE_ORGANISATIONS_TABLE", "tblZ54ACx9Cqs1oAr")
 
 
 def missing_required(*names: str) -> list[str]:

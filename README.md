@@ -1,334 +1,382 @@
 # Charity Aid Pro
 
-A funding pipeline tool for UK charities. A React dashboard surfaces grant
-opportunities; a small Python pipeline pulls funding emails from a personal
-Outlook inbox, parses them with an LLM, scores each opportunity, and writes
-the results to Supabase.
+Charity Aid Pro is an email pipeline for Music4Wellbeing (M4W). The pipeline
+reads funding emails from the funding mailbox. It finds the funding
+opportunities in each email and gives each opportunity a score. Then it adds
+the opportunities to the Airtable table "Opportunities".
+
+This document uses ASD-STE100 (Simplified Technical English).
 
 ---
 
-## Architecture
+## 1. System overview
 
 ```
-┌────────────────────────────┐         ┌──────────────────────────────────────┐
-│  Frontend (React SPA)      │         │  Python pipelines (two CLIs)         │
-│                            │         │                                      │
-│  - Discover funding        │         │  python -m email_parsing.run         │
-│  - Pipeline (Kanban)       │◀────────│    fetch → parse → score → upsert    │
-│  - Active funding          │  reads  │    (daily 09:00 UTC)                 │
-│  - Reports & analytics     │         │                                      │
-│  - Relationships           │         │  python -m email_parsing.reminders.run│
-│  - Reminders               │         │    deadline reminders → Graph sendMail│
-│                            │         │    (daily 10:00 UTC)                 │
-└────────────────────────────┘         └──────────────────────────────────────┘
-            │                                          │
-            │ Supabase JS client                       │ Supabase Python client
-            ▼                                          ▼
-        ┌──────────────────────────────────────────────────┐
-        │            Supabase (Postgres + RLS)             │
-        │   opportunities · funder_contacts ·              │
-        │   reminder_rules · reminder_recipients ·         │
-        │   reminder_log                                   │
-        └──────────────────────────────────────────────────┘
-
-Three GitHub Actions:
-  - email-pipeline.yml  → parse inbox (daily 09:00 UTC)
-  - reminders.yml       → send deadline reminders (daily 10:00 UTC)
-  - deploy-pages.yml    → build + deploy the SPA to GitHub Pages (on push to main)
-
-External services:
-  - Microsoft Graph (personal Outlook, MSAL device-code; Mail.ReadWrite + Mail.Send)
-  - Groq (Llama 3.3 70B via OpenAI-compatible endpoint, free tier)
+┌──────────────────────┐    ┌──────────────────────────┐    ┌───────────────────────────┐
+│ Funding mailbox      │    │ Email pipeline           │    │ Airtable                  │
+│ (personal Outlook)   │───▶│ GitHub Actions, daily    │───▶│ Base "Music4Wellbeing"    │
+│                      │    │ 09:00 UTC                │    │ Table "Opportunities"     │
+└──────────────────────┘    │ fetch → parse → score    │    │ (links to "Organisations")│
+                            │ → write → mark as read   │    └───────────────────────────┘
+                            └────────────┬─────────────┘
+                                         │
+                                         ▼
+                            ┌──────────────────────────┐
+                            │ LLM (Groq, Llama 3.3 70B)│
+                            └──────────────────────────┘
 ```
+
+The system has these parts:
+
+| Part | Function |
+|---|---|
+| Funding mailbox | A personal Outlook account. Funders send emails to this mailbox. |
+| Email pipeline | A Python program (`email_parsing/`). A GitHub Actions workflow runs it one time each day. |
+| LLM | A large language model. It reads each email and gives the opportunity data and the score. |
+| Airtable | The "Opportunities" table keeps all opportunities. Your team works on them in Airtable. |
+
+The pipeline does not send reminders. The team sets up reminders in a
+different system.
 
 ---
 
-## Repository structure
+## 2. Repository contents
 
 ```
 charity-aid-pro/
-├── src/                              # React frontend
-│   ├── components/                   # UI components (shadcn/ui)
-│   ├── pages/                        # Dashboard pages
-│   └── lib/                          # FundingOpportunity types + helpers
-├── email_parsing/                    # Python pipelines (CLIs, no server)
-│   ├── run.py                        # parse-pipeline CLI entry point
-│   ├── outlook.py                    # MSAL device-code + Graph (fetch + token)
-│   ├── llm.py                        # OpenAI-compatible client + parse()
-│   ├── scoring.py                    # gating + algorithmic + heuristic
-│   ├── storage.py                    # Supabase upsert
-│   ├── schema.py                     # Pydantic models
-│   ├── config.py                     # env vars
-│   ├── prompts/parse.txt             # single classify+extract prompt
-│   ├── reminders/                    # deadline-reminder pipeline
-│   │   ├── run.py                    # reminders CLI entry point
-│   │   ├── mailer.py                 # Graph sendMail wrapper
-│   │   ├── template.py               # HTML email templates
-│   │   └── tests/
-│   └── tests/
-├── supabase/migrations/              # opportunities · funder_contacts · reminder tables
+├── email_parsing/                  # The email pipeline
+│   ├── run.py                      # Command-line entry point
+│   ├── outlook.py                  # Outlook login and email fetch (Microsoft Graph)
+│   ├── llm.py                      # LLM client and email parse
+│   ├── scoring.py                  # Geography check, eligibility check, score, tags
+│   ├── storage.py                  # Airtable write
+│   ├── schema.py                   # Data models (Pydantic)
+│   ├── config.py                   # Environment variables
+│   ├── prompts/parse.txt           # The LLM prompt for the email parse
+│   └── tests/                      # Unit tests
 └── .github/workflows/
-    ├── email-pipeline.yml            # parse inbox (daily 09:00 UTC)
-    ├── reminders.yml                 # send reminders (daily 10:00 UTC)
-    └── deploy-pages.yml              # build + deploy SPA to GitHub Pages
+    └── email-pipeline.yml          # Daily schedule (09:00 UTC)
 ```
 
 ---
 
-## Frontend
+## 3. The Airtable "Opportunities" table
 
-**Tech stack:** React 18, TypeScript, Vite, shadcn/ui, Tailwind CSS,
-TanStack Query, React Router v6, Zod, React Hook Form, Supabase JS client.
+The table is in the base "Music4Wellbeing". It has one record for each
+opportunity.
 
-### Local development
+> **CAUTION:** Do not rename or delete the fields in this table. The pipeline
+> writes to the fields by name. If a field name changes, the pipeline stops.
 
-```sh
-npm install
-cp .env.example .env       # fill in VITE_SUPABASE_URL + VITE_SUPABASE_PUBLISHABLE_KEY
-npm run dev                # http://localhost:8080
-npm test
-```
+| Field | Type | Value |
+|---|---|---|
+| Opportunity | Text | Programme name and funder name |
+| Status | Single select | The pipeline sets `New` or `Opportunity Dismissed`. Your team changes it after that. |
+| Score | Number | 0 to 100. See section 6. |
+| Funder | Text | Funder name |
+| Programme | Text | Programme name |
+| Organisation | Link to "Organisations" | The pipeline sets this link only if an Organisations record has the same name. It does not make new Organisations records. |
+| Deadline | Date | Application deadline. Empty if the email does not give a date. |
+| Amount | Currency (£) | Minimum or exact award. 0 if the email does not give an amount. |
+| Amount Max | Currency (£) | Maximum award, if the email gives a range |
+| Funding Type | Single select | Grant, Trust, Lottery, Corporate or Government |
+| Location | Text | Area where the funder accepts applications |
+| Duration (Months) | Number | Length of the funding. 12 if the email does not give a length. |
+| Tags | Multiple select | Quick Win, Multi-Year, Capital Cost, Strong Match, High Value |
+| Description | Long text | Summary of the opportunity (2 or 3 sentences) |
+| Website | URL | Link to the opportunity |
+| Contact Name | Text | Contact person |
+| Contact Email | Email | Contact email address |
+| Notes | Long text | Other information. If the deadline is not a date (for example, "end of March"), the pipeline writes it here. |
+| Dismissal Reason | Long text | Why the pipeline or your team dismissed the opportunity |
+| Gating | Single select | Passed, Needs Review or Failed. The result of the geography and eligibility checks. |
+| Activity Score | Number | 0 to 100. See section 6. |
+| Audience Score | Number | 0 to 100. See section 6. |
+| Score Reasoning | Long text | The reason for the score, from the LLM |
+| Scored At | Date and time | When the pipeline calculated the score |
+| Date Found | Date and time | When the pipeline added the record |
+| Email Subject | Text | Subject of the source email |
+| Email From | Email | Sender of the source email |
+| Email Received | Date and time | When the mailbox received the source email |
+| Source ID | Text | Unique key: Outlook message ID + `#` + position in the email. The pipeline uses it to prevent duplicate records. Do not change it. |
 
-### Pages
+### 3.1 Rules for records
 
-| Page | Description |
+- The pipeline only adds records. It does not change records that are
+  already in the table. Your changes in Airtable are safe.
+- If two emails give the same opportunity, the table gets two records.
+  Delete the duplicate record manually.
+- When you apply for an opportunity, add a record in "Grants & Funding".
+  The "Opportunities" table does not record application data.
+- If the geography check fails, the status stays `New` and Gating is
+  `Failed`. Use a filter on Gating to hide these records.
+
+### 3.2 Data from the old system
+
+Before October 2026, the pipeline wrote to a Supabase database. All 52
+records from that database are now in the "Opportunities" table.
+
+- The Source ID of each old record is the old Supabase ID.
+- Application data from the old website (submission date, amount awarded,
+  and so on) is in the Notes field. The text starts with "Tracking data from
+  the old website".
+- Two old records are test data: Source ID `Test1` and
+  `custom-1778511453619`. You can delete them.
+
+---
+
+## 4. How the pipeline works
+
+The pipeline does these steps for each run:
+
+1. **Fetch.** The pipeline gets the most recent unread emails from the
+   Outlook inbox. It uses Microsoft Graph.
+2. **Parse.** The LLM reads each email. It gives a classification
+   (`FUNDING_OPPORTUNITY`, `NEWSLETTER` or `IRRELEVANT`) and a list of
+   opportunities. For a newsletter or an irrelevant email, the list is empty.
+3. **Score.** The pipeline does a geography check and an eligibility check
+   on each opportunity. Then it calculates a score and adds tags. See
+   section 6.
+4. **Write.** The pipeline adds each new opportunity to the "Opportunities"
+   table. If a record with the same Source ID is already in the table, the
+   pipeline does not change it.
+5. **Mark as read.** The pipeline marks the email as read. It does this only
+   after the parse and the write are successful.
+
+If a step fails, the email stays unread. The next run tries the email again.
+
+---
+
+## 5. Setup
+
+Do these procedures one time. You need administrator access to the GitHub
+repository and to the Airtable base.
+
+### 5.1 Make an Airtable token
+
+1. Go to <https://airtable.com/create/tokens>.
+2. Click **Create token**.
+3. Type a name, for example `charity-aid-pro pipeline`.
+4. Add the scope `data.records:read`.
+5. Add the scope `data.records:write`.
+6. In **Access**, add the base **Music4Wellbeing**.
+7. Click **Create token**.
+8. Copy the token. Airtable shows the token one time only.
+
+> **WARNING:** The token gives write access to the base. Do not put it in the
+> code or in a commit. Keep it only in GitHub secrets or in your local
+> environment.
+
+### 5.2 Set the GitHub secrets
+
+1. In GitHub, open the repository.
+2. Go to **Settings → Secrets and variables → Actions**.
+3. Make sure that these secrets are set:
+
+| Secret | Value |
 |---|---|
-| Dashboard | Summary metrics and recent activity |
-| Discover | Browse and search funding opportunities |
-| Pipeline | Kanban — track applications from identified to awarded |
-| Funding | Active grants and renewal tracking |
-| Reports | Analytics and charts |
-| Relationships | Funder organisations derived from opportunity history; optional contact enrichment |
-| Reminders | Email reminder rules and recipients |
+| `AIRTABLE_TOKEN` | The token from procedure 5.1 |
+| `LLM_API_KEY` | Groq API key (starts with `gsk_`) |
+| `MSAL_TOKEN_CACHE_B64` | The Outlook login cache. See procedure 5.3. |
 
-### Deployment
+4. Optional: set these variables only if you must change the default values.
 
-`.github/workflows/deploy-pages.yml` builds the SPA (`npm ci && npm run build`)
-and deploys `dist/` to GitHub Pages on every push to `main` (and on manual
-dispatch). It copies `dist/index.html` to `dist/404.html` so client-side
-routes resolve on Pages. Vite inlines `VITE_SUPABASE_*` at build time, so
-those values must be present in the build environment for the deployed site
-to reach Supabase.
+| Variable | Default value |
+|---|---|
+| `LLM_BASE_URL` | `https://api.groq.com/openai/v1` |
+| `LLM_MODEL` | `llama-3.3-70b-versatile` |
+| `MSAL_CLIENT_ID` | The registered Microsoft Entra app ID |
+| `AIRTABLE_BASE_ID` | `apptkzNqMPnlzdyhA` (Music4Wellbeing) |
+| `AIRTABLE_OPPORTUNITIES_TABLE` | `tbla8L8gUX6xN1XeO` (Opportunities) |
+| `AIRTABLE_ORGANISATIONS_TABLE` | `tblZ54ACx9Cqs1oAr` (Organisations) |
+
+### 5.3 Log in to the Outlook mailbox
+
+Do this procedure for the first setup. Do it again if the login expires.
+
+1. Install Python 3.11 or later.
+2. Install the dependencies:
+
+   ```sh
+   pip install -r email_parsing/requirements.txt
+   ```
+
+3. From the repository root, start the login:
+
+   ```sh
+   python -m email_parsing.outlook auth
+   ```
+
+4. Open the link that the command shows. Type the code.
+5. Log in with the funding mailbox account.
+6. Export the login cache:
+
+   ```sh
+   python -m email_parsing.outlook export-cache
+   ```
+
+7. Copy the output into the GitHub secret `MSAL_TOKEN_CACHE_B64`.
+
+> **NOTE:** The login cache file is `token_cache.bin` in the repository root.
+> Git ignores this file. Do not commit it.
 
 ---
 
-## Email pipeline
+## 6. Score and tags
 
-The pipeline is a single Python CLI script. It runs on a daily GitHub
-Actions cron — there is no Azure Functions runtime, no FastAPI server, no
-Cosmos DB.
+The pipeline does these checks on each opportunity:
 
-**Tech stack:** Python 3.11, Microsoft Graph (personal Outlook via MSAL
-device-code, scope `Mail.ReadWrite`), Groq + Llama 3.3 70B over the OpenAI-
-compatible endpoint, Supabase, Pydantic v2, httpx, MarkItDown.
+1. **Geography check.** The LLM checks that the funder accepts applications
+   from Kent. If the LLM call fails, a keyword list does the check. If the
+   check fails, the score is 0 and Gating is `Failed`.
+2. **Eligibility check and score.** The LLM gives two scores from 0 to 100:
+   - **Activity score:** how well the activity agrees with group therapeutic
+     music sessions.
+   - **Audience score:** how well the audience agrees with people in need
+     because of ill health, disability or age.
 
-### How it works
+   Score = 40% activity score + 60% audience score.
 
-For each run:
+   If the score is less than 20, or the LLM finds that M4W is not eligible,
+   the status is `Opportunity Dismissed`. If the LLM call fails, a keyword
+   list calculates the score.
+3. **Tags.** The pipeline adds these tags:
 
-1. **Fetch** — Microsoft Graph returns the most recent inbox messages.
-   With `--unread-only` (the cron default), `$filter=isRead eq false`
-   restricts the query to messages we haven't processed yet.
-2. **Parse** — one LLM call per email returns
-   `{classification, confidence, opportunities[]}`. Newsletter / irrelevant
-   emails come back with an empty list.
-3. **Score** — each opportunity goes through gating (extraction confidence,
-   geography with LLM + keyword fallback, eligibility heuristic),
-   algorithmic scoring (funding band, days-to-deadline, geography
-   modifier), and a weighted composite score (0–100). Suggested tags are
-   added: `Quick Win`, `Multi-Year`, `Strong Match`, `High Value`.
-4. **Store** — opportunities are upserted to the `opportunities` table on
-   the deterministic id `{emailId}#{idx}`, so reruns are idempotent.
-5. **Mark read** — only after both LLM and storage succeed. If anything
-   earlier fails, the email stays unread and the next run retries it.
+| Tag | Condition |
+|---|---|
+| Quick Win | The deadline is in less than 30 days, and the email tells of a short application (for example, an expression of interest) |
+| Multi-Year | The duration is 24 months or more |
+| Strong Match | The score is 80 or more |
+| High Value | The maximum amount is £30,000 or more |
 
-### Local runs
+The LLM can also add the tag `Capital Cost`.
+
+---
+
+## 7. Run the pipeline
+
+### 7.1 Automatic run
+
+The workflow `.github/workflows/email-pipeline.yml` runs each day at
+09:00 UTC (09:00 GMT, 10:00 BST). It fetches a maximum of 25 unread emails.
+It marks each processed email as read. It keeps the full result
+(`parsed.json`) as a workflow artifact for 14 days.
+
+### 7.2 Manual run in GitHub
+
+1. In GitHub, go to **Actions → Email parsing pipeline**.
+2. Click **Run workflow**.
+3. Optional: change the inputs:
+   - `count`: the number of emails to fetch.
+   - `unread_only`: fetch only unread emails.
+   - `mark_read`: mark the processed emails as read.
+4. Click **Run workflow**.
+
+### 7.3 Local run
+
+1. Do procedure 5.3, steps 1 to 5.
+2. Set the environment variables:
+
+   ```sh
+   export LLM_API_KEY=<Groq key>
+   export AIRTABLE_TOKEN=<Airtable token>
+   ```
+
+3. Run the pipeline:
+
+   ```sh
+   python -m email_parsing.run --count 10
+   ```
+
+To test without a write to Airtable, use `--no-store`:
 
 ```sh
-# One-time: register a Microsoft Entra app (any-org-or-personal account
-# type, Mail.ReadWrite delegated permission, public client flow enabled),
-# then authenticate from the repo root:
-python -m email_parsing.outlook auth
-
-# Set credentials and run:
-export LLM_API_KEY=<groq key>            # gsk_...
-export SUPABASE_URL=https://<project>.supabase.co
-export SUPABASE_KEY=<service-role key>
-
-python -m email_parsing.run --count 10                    # full pipeline
 python -m email_parsing.run --count 5 --no-store --output /tmp/parsed.json
 ```
 
-CLI flags: `--count N`, `--unread-only`, `--mark-read`, `--no-store`,
-`--no-score`, `--output PATH`. Locally, `--unread-only` and `--mark-read`
-are off by default so you can re-test without changing inbox state. The
-cron run sets both.
+The command-line options are:
 
-Tests:
+| Option | Function |
+|---|---|
+| `--count N` | Fetch the N most recent emails (default 10) |
+| `--unread-only` | Fetch only unread emails |
+| `--mark-read` | Mark each processed email as read |
+| `--no-store` | Do not write to Airtable |
+| `--no-score` | Do not calculate scores |
+| `--output PATH` | Write the full result as JSON to PATH |
+
+> **NOTE:** A local run does not use `--unread-only` or `--mark-read` by
+> default. Thus a local test does not change the mailbox.
+
+### 7.4 Run the tests
 
 ```sh
 pip install -r email_parsing/requirements.txt pytest
 pytest email_parsing/tests
 ```
 
-### Configuration
-
-Pipeline settings come from environment variables ([config.py](email_parsing/config.py)):
-
-| Variable | Required | Default | Notes |
-|---|---|---|---|
-| `LLM_API_KEY` | yes | — | Groq, OpenAI, Gemini OpenAI-compat, OpenRouter, Azure |
-| `LLM_BASE_URL` | no | `https://api.groq.com/openai/v1` | OpenAI-compatible base URL |
-| `LLM_MODEL` | no | `llama-3.3-70b-versatile` | |
-| `LLM_TIMEOUT_SECONDS` | no | `60` | |
-| `MSAL_CLIENT_ID` | no | (registered Entra app) | only override if you re-register |
-| `MSAL_CACHE_FILE` | no | `<repo>/token_cache.bin` | local token cache |
-| `MSAL_TOKEN_CACHE_B64` | CI only | — | base64-encoded cache (overrides the file) |
-| `SUPABASE_URL` | for storage | — | |
-| `SUPABASE_KEY` | for storage | — | service-role key |
-
-The OpenAI client uses `max_retries=6` and honors the `Retry-After` header,
-so a single run absorbs Groq TPM-window resets without bubbling failures.
-
-### GitHub Actions
-
-`.github/workflows/email-pipeline.yml` runs **daily at 09:00 UTC** and on
-manual dispatch. A `concurrency` lock prevents two runs from racing on the
-mailbox. The cron uses `--unread-only --mark-read`, so each day picks up
-only what's actually new.
-
-**Settings → Secrets and variables → Actions**
-
-Secrets (required):
-
-| Name | Value |
-|---|---|
-| `LLM_API_KEY` | Groq API key (`gsk_…`) |
-| `MSAL_TOKEN_CACHE_B64` | output of `python -m email_parsing.outlook export-cache` after running `outlook auth` locally |
-| `SUPABASE_URL` | `https://<project>.supabase.co` |
-| `SUPABASE_KEY` | Supabase service-role key |
-
-Variables (optional — only set to override defaults):
-
-| Name | Default |
-|---|---|
-| `LLM_BASE_URL` | `https://api.groq.com/openai/v1` |
-| `LLM_MODEL` | `llama-3.3-70b-versatile` |
-| `MSAL_CLIENT_ID` | the registered Entra app id |
-
-To rotate the Outlook auth, run `outlook auth` again locally and re-export
-the cache to `MSAL_TOKEN_CACHE_B64`.
-
-### Tuning the prompt
-
-The single LLM prompt is `email_parsing/prompts/parse.txt` — edit and
-commit, no code changes needed. Pydantic validation enforces the schema
-on the way back, so malformed opportunities are dropped with a warning
-rather than blowing up the run.
+The tests do not connect to Outlook, to the LLM or to Airtable.
 
 ---
 
-## Reminders pipeline
+## 8. Configuration
 
-A second Python CLI (`python -m email_parsing.reminders.run`) emails deadline
-reminders for active opportunities. It runs on its own daily cron
-(`.github/workflows/reminders.yml`, **10:00 UTC** — one hour after parsing so
-the day's new opportunities are included).
+The pipeline reads these environment variables ([config.py](email_parsing/config.py)):
 
-### How it works
+| Variable | Necessary | Default value | Function |
+|---|---|---|---|
+| `LLM_API_KEY` | Yes | — | API key for the LLM provider |
+| `LLM_BASE_URL` | No | `https://api.groq.com/openai/v1` | Any OpenAI-compatible endpoint |
+| `LLM_MODEL` | No | `llama-3.3-70b-versatile` | LLM model name |
+| `LLM_TIMEOUT_SECONDS` | No | `60` | Time limit for one LLM call |
+| `AIRTABLE_TOKEN` | Yes, for the write | — | Airtable personal access token |
+| `AIRTABLE_BASE_ID` | No | `apptkzNqMPnlzdyhA` | Airtable base ID |
+| `AIRTABLE_OPPORTUNITIES_TABLE` | No | `tbla8L8gUX6xN1XeO` | "Opportunities" table ID |
+| `AIRTABLE_ORGANISATIONS_TABLE` | No | `tblZ54ACx9Cqs1oAr` | "Organisations" table ID |
+| `MSAL_CLIENT_ID` | No | The registered Entra app ID | Change only if you register a new app |
+| `MSAL_CACHE_FILE` | No | `<repo>/token_cache.bin` | Local Outlook login cache |
+| `MSAL_TOKEN_CACHE_B64` | Yes, in GitHub | — | Base64 Outlook login cache. It overrides the file. |
 
-For each enabled rule in `reminder_rules` (cadence `before_deadline`) and each
-enabled recipient in `reminder_recipients`:
-
-1. Load active opportunities (`identified`, `on_hold`, `researching`,
-   `applying`, `submitted`) with a future deadline.
-2. For every opportunity whose days-to-deadline equals one of the rule's
-   `offsets_days`, claim a `reminder_log` row. The row's unique constraint is
-   the dedup key, so a reminder is sent **at most once** per
-   (opportunity, rule, recipient, offset).
-3. Send the HTML email via Microsoft Graph `sendMail` (needs the `Mail.Send`
-   scope, already in the cached token). If the send fails, the log claim is
-   rolled back so the next run retries.
-
-The template ([template.py](email_parsing/reminders/template.py)) mirrors the
-preview shown on the Reminders page.
-
-### Local runs
-
-```sh
-export SUPABASE_URL=https://<project>.supabase.co
-export SUPABASE_KEY=<service-role key>
-
-python -m email_parsing.reminders.run --dry-run        # log intended sends only
-python -m email_parsing.reminders.run --rule-id deadline
-python -m email_parsing.reminders.run --test you@example.com   # one fake email
-```
-
-CLI flags: `--dry-run`, `--rule-id ID`, `--test EMAIL`. The cron passes
-neither flag (live send, all rules); manual dispatch can set `dry_run` or
-`rule_id` from the Actions UI.
-
-The workflow needs the `MSAL_TOKEN_CACHE_B64`, `SUPABASE_URL`, and
-`SUPABASE_KEY` secrets (the same ones the parsing pipeline uses) plus the
-optional `MSAL_CLIENT_ID` variable. It does **not** need `LLM_API_KEY`.
+The pipeline uses table IDs, not table names. Thus you can rename the
+tables in Airtable. You cannot rename the fields (see section 3).
 
 ---
 
-## Data schema
+## 9. Change the LLM prompt
 
-The Supabase schema lives in [supabase/migrations/](supabase/migrations).
-Pydantic mirror in [email_parsing/schema.py](email_parsing/schema.py);
-TypeScript source of truth in [src/lib/](src/lib).
+The parse prompt is in `email_parsing/prompts/parse.txt`.
 
-Tables: `opportunities`, `funder_contacts`, `reminder_rules`,
-`reminder_recipients`, `reminder_log`.
+1. Edit the file.
+2. Commit and push the change.
 
-### FundingOpportunity
+You do not have to change the code. The pipeline checks each LLM result
+against the data model. If an opportunity has incorrect data, the pipeline
+ignores that opportunity and writes a warning in the log.
 
-Shared contract between the pipeline and the frontend.
+---
 
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `id` | `string` | — | Deterministic `{emailId}#{idx}` |
-| `funderName` | `string` | — | Funding organisation |
-| `programName` | `string` | — | Specific grant programme |
-| `amount` | `number` | — | Minimum award (GBP) |
-| `amountMax` | `number \| null` | `null` | Max award if a range is given |
-| `type` | `"grant" \| "trust" \| "lottery" \| "corporate" \| "government"` | — | |
-| `deadline` | `string` | — | ISO 8601 date or `"unknown"` |
-| `location` | `string` | — | Geographic eligibility |
-| `duration` | `"single-year" \| "multi-year"` | — | |
-| `durationMonths` | `number` | `12` | |
-| `status` | `"identified" \| "on_hold" \| "researching" \| "applying" \| "submitted" \| "awarded" \| "funds_received" \| "rejected" \| "dismissed"` | `"identified"` | Pipeline stage |
-| `score` | `number` (0–100) | `0` | Mirrors `final_score` after scoring |
-| `tags` | `string[]` | `[]` | LLM-suggested + scoring-suggested tags |
-| `description` | `string` | `""` | 2–3 sentence summary |
-| `eligibility` | `string` | `""` | Key criteria |
-| `notes` | `string` | `""` | Free-form |
-| `website` | `string` | `""` | URL |
-| `contactName` | `string \| null` | `null` | |
-| `contactEmail` | `string \| null` | `null` | |
-| `source` | `string` | `""` | e.g. `"email:AAMkAG..."` |
-| `extractionConfidence` | `float` (0–1) | `0` | LLM confidence |
+## 10. Troubleshooting
 
-After scoring, opportunities also carry `gating`, `scores`, `timing`,
-`final_score`, `suggested_tags`, and `scored_at`. See
-[email_parsing/README.md](email_parsing/README.md) for the scoring detail.
+| Problem | Possible cause | Action |
+|---|---|---|
+| The workflow log shows `Missing required env vars ... AIRTABLE_TOKEN` | The secret is not set | Do procedure 5.2. |
+| The log shows `Airtable POST ... failed (401)` or `(403)` | The token is incorrect, expired, or has no access to the base | Do procedure 5.1 again. Then update the secret. |
+| The log shows `Airtable POST ... failed (422)` | A field name or a field type in Airtable changed | Make the field names and types the same as section 3. |
+| The log shows `No cached MSAL account` or `Cached MSAL token expired` | The Outlook login expired | Do procedure 5.3 again. |
+| No new records in Airtable | No unread emails, or the LLM found no relevant opportunities | Look at the workflow log. Each email has a line with the classification and the number of opportunities. |
+| The same email is processed each day | The write to Airtable fails, so the email stays unread | Look at the workflow log for the error. |
 
-### FunderContact
+---
 
-Optional enrichment for funder organisations. The Relationships page
-derives per-funder stats (applications, awards, total funded) directly
-from the `opportunities` table grouped by `funder_name`; `funder_contacts`
-holds manually added contact details only.
+## 11. Retired parts of the old system
 
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `id` | `uuid` | auto | Primary key |
-| `organisation` | `string` | — | Funder org name (case-insensitive unique) |
-| `name` | `string` | `""` | Contact person name |
-| `email` | `string` | `""` | Contact email |
-| `notes` | `string` | `""` | Free-form notes (e.g. relationship context) |
+The old system had a website, a reminders pipeline and a Supabase database.
+This repository no longer contains them. Git history keeps the old code.
 
-The `organisation` column has a case-insensitive unique index so lookups
-and upserts from the frontend normalise to `lower(organisation)`.
+Do these steps to finish the shutdown:
+
+1. Unpublish the old website. In GitHub, go to **Settings → Pages**. Click
+   **Unpublish site**.
+2. Remove the old GitHub secrets `SUPABASE_URL` and `SUPABASE_KEY`.
+3. When you no longer need the old data, pause or delete the Supabase
+   project. The data in Supabase did not change during the migration.

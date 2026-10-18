@@ -1,39 +1,25 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
-node_modules
-dist
-dist-ssr
-*.local
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-
 # Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-token_cache.bin
+.venv/
+.pytest_cache/
+artifacts/
 
-# Environment variables
-.env.local
+# Secrets and local state
+token_cache.bin
 .env
-result.json
+.env.local
+
+# Logs
+*.log
+
+# Editor directories and files
+.vscode/*
+.idea
+.DS_Store
+*.sw?
 
 # Agents
 .mcp.json

@@ -47,13 +47,16 @@ jobs:
           # Required secrets
           LLM_API_KEY:          ${{ secrets.LLM_API_KEY }}
           MSAL_TOKEN_CACHE_B64: ${{ secrets.MSAL_TOKEN_CACHE_B64 }}
-          SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY:         ${{ secrets.SUPABASE_KEY }}
+          AIRTABLE_TOKEN:       ${{ secrets.AIRTABLE_TOKEN }}
           # Optional vars — leave unset to use the defaults baked into config.py
-          # (Groq + llama-3.3-70b-versatile, the registered Entra app id).
-          LLM_BASE_URL:   ${{ vars.LLM_BASE_URL }}
-          LLM_MODEL:      ${{ vars.LLM_MODEL }}
-          MSAL_CLIENT_ID: ${{ vars.MSAL_CLIENT_ID }}
+          # (Groq + llama-3.3-70b-versatile, the registered Entra app id,
+          # the Music4Wellbeing base and its Opportunities table).
+          LLM_BASE_URL:                 ${{ vars.LLM_BASE_URL }}
+          LLM_MODEL:                    ${{ vars.LLM_MODEL }}
+          MSAL_CLIENT_ID:               ${{ vars.MSAL_CLIENT_ID }}
+          AIRTABLE_BASE_ID:             ${{ vars.AIRTABLE_BASE_ID }}
+          AIRTABLE_OPPORTUNITIES_TABLE: ${{ vars.AIRTABLE_OPPORTUNITIES_TABLE }}
+          AIRTABLE_ORGANISATIONS_TABLE: ${{ vars.AIRTABLE_ORGANISATIONS_TABLE }}
         run: |
           # On scheduled runs (no inputs), default to unread-only + mark-read so
           # each cron picks up only what's actually new and won't reprocess
