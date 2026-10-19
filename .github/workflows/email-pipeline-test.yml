@@ -1,4 +1,4 @@
-# TEMPORARY: test run of the pipeline from this branch. Delete before merge.
+# TEMPORARY (run 3): test run of the pipeline from this branch. Delete before merge.
 name: Email pipeline test (temporary)
 
 on:
@@ -41,9 +41,11 @@ jobs:
               print("-", e["classification"], "|", e["email_subject"][:70])
               for o in e["opportunities"]:
                   g = (o.get("gating") or {})
+                  s, geo = g.get("score") or {}, g.get("geography") or {}
                   print("    *", o["funder_name"], "|", o["program_name"], "| score", o.get("final_score"),
-                        "|", o.get("status"), "|", g.get("status"), "| deadline", o["deadline"],
-                        "| web", bool(o.get("website")), "| email", bool(o.get("contact_email")))
+                        f"({s.get('activity_score')}/{s.get('audience_score')})", "|", o.get("status"),
+                        "| geo", geo.get("pass"), "| deadline", o["deadline"])
+                  print("       ", (s.get("reasoning") or geo.get("reasoning") or "")[:200])
           PY
       - uses: actions/upload-artifact@v4
         if: always()
