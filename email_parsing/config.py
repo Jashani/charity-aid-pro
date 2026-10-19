@@ -16,11 +16,17 @@ def _env(name: str, default: str = "") -> str:
 
 
 # ── LLM (OpenAI-compatible endpoint) ─────────────────────────────────────────
-# Defaults target Groq + Llama 3.3 70B, but any OpenAI-compatible URL works
-# (OpenAI, Gemini OpenAI-compat, OpenRouter, Azure, etc.).
+# Defaults target Groq + GPT-OSS 120B (free plan), but any OpenAI-compatible
+# URL works (OpenAI, Gemini OpenAI-compat, OpenRouter, Azure, etc.).
 LLM_BASE_URL: str = _env("LLM_BASE_URL", "https://api.groq.com/openai/v1")
 LLM_API_KEY: str = _env("LLM_API_KEY")
-LLM_MODEL: str = _env("LLM_MODEL", "llama-3.3-70b-versatile")
+LLM_MODEL: str = _env("LLM_MODEL", "openai/gpt-oss-120b")
+# "low" keeps reasoning tokens (and the free-plan token budget) small.
+# Set "off" for models without a reasoning_effort parameter.
+LLM_REASONING_EFFORT: str = _env("LLM_REASONING_EFFORT", "low")
+# true: strict JSON schema output. Set "false" for models without structured
+# outputs; they then get plain JSON mode.
+LLM_STRICT_SCHEMA: bool = _env("LLM_STRICT_SCHEMA", "true").lower() == "true"
 LLM_TIMEOUT_SECONDS: float = float(_env("LLM_TIMEOUT_SECONDS", "60"))
 
 # ── Microsoft Graph (personal Outlook via MSAL device-code) ──────────────────
@@ -33,9 +39,13 @@ MSAL_CACHE_FILE: str = _env(
 )
 MSAL_TOKEN_CACHE_B64: str = _env("MSAL_TOKEN_CACHE_B64")
 
-# ── Supabase ─────────────────────────────────────────────────────────────────
-SUPABASE_URL: str = _env("SUPABASE_URL")
-SUPABASE_KEY: str = _env("SUPABASE_KEY")
+# ── Airtable ─────────────────────────────────────────────────────────────────
+# Personal access token with data.records:read + data.records:write on the base.
+AIRTABLE_TOKEN: str = _env("AIRTABLE_TOKEN")
+# IDs of the Music4Wellbeing base and its tables. IDs (not names) survive renames.
+AIRTABLE_BASE_ID: str = _env("AIRTABLE_BASE_ID", "apptkzNqMPnlzdyhA")
+AIRTABLE_OPPORTUNITIES_TABLE: str = _env("AIRTABLE_OPPORTUNITIES_TABLE", "tbla8L8gUX6xN1XeO")
+AIRTABLE_ORGANISATIONS_TABLE: str = _env("AIRTABLE_ORGANISATIONS_TABLE", "tblZ54ACx9Cqs1oAr")
 
 
 def missing_required(*names: str) -> list[str]:

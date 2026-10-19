@@ -4,7 +4,7 @@ Usage:
     python -m email_parsing.run [--count N] [--mark-read] [--output PATH] [--no-store]
 
 Reads recent emails from a personal Outlook account, parses each via the LLM,
-scores any extracted opportunities, and (by default) upserts them to Supabase.
+scores any extracted opportunities, and (by default) adds them to Airtable.
 A JSON summary is always printed to stdout; pass --output to also write the
 full parsed payload to disk.
 """
@@ -62,7 +62,7 @@ def main(argv: list[str] | None = None) -> int:
         "inbox-driven watermark that skips already-processed messages).",
     )
     ap.add_argument("--mark-read", action="store_true", help="Mark processed emails as read in Outlook.")
-    ap.add_argument("--no-store", action="store_true", help="Skip the Supabase upsert.")
+    ap.add_argument("--no-store", action="store_true", help="Skip the Airtable write.")
     ap.add_argument("--no-score", action="store_true", help="Skip the scoring stage.")
     ap.add_argument("--output", type=Path, help="Write the full parsed payload as JSON to this path.")
     ap.add_argument("--log-level", default=os.environ.get("LOG_LEVEL", "INFO"))
@@ -77,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
 
     do_store = not args.no_store
     if do_store:
-        missing_db = config.missing_required("SUPABASE_URL", "SUPABASE_KEY")
+        missing_db = config.missing_required("AIRTABLE_TOKEN")
         if missing_db:
             print(
                 f"Missing required env vars for storage: {', '.join(missing_db)} "
@@ -102,8 +102,22 @@ def main(argv: list[str] | None = None) -> int:
         subject = (email.get("subject") or "")[:80]
         log.info("---- %s | %s", (email.get("receivedDateTime") or "")[:10], subject)
 
+        if do_store and storage.email_already_stored(eid):
+            log.info("  already in Airtable — skipped")
+            if args.mark_read:
+                try:
+                    outlook.mark_as_read(eid)
+                except Exception as exc:
+                    log.warning("Could not mark %s as read: %s", eid, exc)
+            processed += 1
+            continue
+
         try:
             parsed = process_email(email, do_score=not args.no_score)
+        except llm.DailyLimitError as exc:
+            failed += 1
+            log.error("Daily LLM token limit reached — stopping. Unprocessed emails stay unread. %s", exc)
+            break
         except Exception as exc:
             failed += 1
             log.error("FAILED on %s: %s", eid, exc, exc_info=True)
@@ -121,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
                 storage.store_parsed_email(parsed)
             except Exception as exc:
                 failed += 1
-                log.error("Storage upsert failed for %s: %s", eid, exc, exc_info=True)
+                log.error("Airtable write failed for %s: %s", eid, exc, exc_info=True)
                 continue
 
         if args.mark_read:
