@@ -3,7 +3,7 @@ name: Email parsing pipeline
 on:
   schedule:
     # 09:00 UTC daily. Cron is always UTC — that's 09:00 GMT / 10:00 BST.
-    - cron: "0 9 * * *"
+    - cron: "17 9 * * *"
   workflow_dispatch:
     inputs:
       count:
