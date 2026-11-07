@@ -2,7 +2,8 @@ name: Email parsing pipeline
 
 on:
   schedule:
-    # 09:00 UTC daily. Cron is always UTC — that's 09:00 GMT / 10:00 BST.
+    # 09:17 UTC daily. Cron is always UTC — that's 09:17 GMT / 10:17 BST.
+    # GitHub can start a scheduled run some hours late when it is busy.
     - cron: "17 9 * * *"
   workflow_dispatch:
     inputs:
@@ -19,6 +20,11 @@ on:
         type: boolean
         default: true
 
+# Needed by the "Keep the schedule enabled" step.
+permissions:
+  contents: read
+  actions: write
+
 # Don't run two pipeline jobs at once — they'd race on the same mailbox.
 concurrency:
   group: email-pipeline
@@ -32,6 +38,16 @@ jobs:
     timeout-minutes: 45
 
     steps:
+      # GitHub turns off the daily schedule of a public repository after 60 days
+      # with no commits. This happened on 2026-08-17: no runs until 2026-11-04.
+      # Enabling the workflow again on each run resets that 60-day count.
+      - name: Keep the schedule enabled
+        if: github.event_name == 'schedule'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/email-pipeline.yml/enable"
+
       - uses: actions/checkout@v4
 
       - name: Set up Python
@@ -60,7 +76,6 @@ jobs:
           MSAL_CLIENT_ID:               ${{ vars.MSAL_CLIENT_ID }}
           AIRTABLE_BASE_ID:             ${{ vars.AIRTABLE_BASE_ID }}
           AIRTABLE_OPPORTUNITIES_TABLE: ${{ vars.AIRTABLE_OPPORTUNITIES_TABLE }}
-          AIRTABLE_ORGANISATIONS_TABLE: ${{ vars.AIRTABLE_ORGANISATIONS_TABLE }}
         run: |
           # On scheduled runs (no inputs), default to unread-only + mark-read so
           # each cron picks up only what's actually new and won't reprocess

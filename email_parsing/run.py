@@ -35,9 +35,14 @@ def _parse_received(value: str) -> datetime:
 
 def process_email(email: dict, *, do_score: bool = True) -> ParsedEmail:
     parse_result = llm.parse_email(email)
+    kept, dismissed = parse_result.opportunities, []
 
-    if do_score and parse_result.opportunities:
-        scoring.score_all(parse_result.opportunities)
+    if do_score and kept:
+        scoring.score_all(kept)
+        # Dismissed opportunities are not written to Airtable. They stay in
+        # the run log and the JSON payload so a person can check them.
+        dismissed = [o for o in kept if o.status == "dismissed"]
+        kept = [o for o in kept if o.status != "dismissed"]
 
     return ParsedEmail(
         email_id=email["id"],
@@ -48,7 +53,8 @@ def process_email(email: dict, *, do_score: bool = True) -> ParsedEmail:
         model_used=config.LLM_MODEL,
         classification=parse_result.classification,
         classification_confidence=parse_result.classification_confidence,
-        opportunities=parse_result.opportunities,
+        opportunities=kept,
+        dismissed=dismissed,
     )
 
 
@@ -129,6 +135,9 @@ def main(argv: list[str] | None = None) -> int:
         for i, opp in enumerate(parsed.opportunities, 1):
             score = f"{opp.final_score:.1f}" if opp.final_score is not None else "n/a"
             log.info("    [%d] %s — %s (score %s)", i, opp.funder_name, opp.program_name, score)
+        for opp in parsed.dismissed:
+            log.info("    dismissed (not stored): %s — %s: %s",
+                     opp.funder_name, opp.program_name, opp.dismissal_reason)
 
         if do_store:
             try:

@@ -27,13 +27,13 @@ def test_parse_email_envelope(monkeypatch):
             {
                 "funder_name": "Foo",
                 "program_name": None,
-                "amount": None,
+                "amount_min": None,
                 "amount_max": 5000,
-                "type": "trust",
+                "amount_typical": None,
+                "type": "trust_foundation",
                 "deadline": "2026-12-31",
                 "location": "UK",
                 "duration_months": None,
-                "capital_cost": True,
                 "description": "Test",
                 "notes": "",
                 "website": "https://example.com",
@@ -52,9 +52,42 @@ def test_parse_email_envelope(monkeypatch):
     assert opp.funder_name == "Foo"
     assert opp.id == "opp-0"
     assert opp.program_name == "Unknown"
-    assert opp.amount == 0
-    assert opp.duration_months == 12
-    assert opp.tags == ["Capital Cost"]
+    assert opp.amount_min is None
+    assert opp.amount_typical is None
+    assert opp.duration_months is None
+
+
+def _opp_item(**over):
+    item = {
+        "funder_name": "Foo", "program_name": "Bar", "amount_min": None, "amount_max": None,
+        "amount_typical": None, "type": "trust_foundation", "deadline": "unknown",
+        "location": "UK", "duration_months": None, "description": "Test", "notes": "",
+        "website": None, "contact_name": None, "contact_email": None,
+    }
+    item.update(over)
+    return item
+
+
+def test_typical_amount_is_midpoint_of_range():
+    assert llm._to_opportunity(_opp_item(amount_min=2500, amount_max=5000), 0).amount_typical == 3750
+    stated = _opp_item(amount_min=2500, amount_max=5000, amount_typical=3000)
+    assert llm._to_opportunity(stated, 0).amount_typical == 3000
+    assert llm._to_opportunity(_opp_item(amount_max=5000), 0).amount_typical is None
+
+
+def test_newsletter_and_forwarder_contacts_are_removed(monkeypatch):
+    import json
+
+    payload = {"classification": "FUNDING_OPPORTUNITY", "confidence": 0.9, "opportunities": [
+        _opp_item(funder_name="A", contact_name="Editor", contact_email="news@idoxgroup.com"),
+        _opp_item(funder_name="B", contact_name="Gemma", contact_email="gemma@music4wellbeing.org.uk"),
+        _opp_item(funder_name="C", contact_name="Sam", contact_email="sam@forwarder.example"),
+        _opp_item(funder_name="D", contact_name="Jo", contact_email="grants@fund.example"),
+    ]}
+    monkeypatch.setattr(llm, "_chat", lambda system, user, *, stage, schema: json.dumps(payload))
+    result = llm.parse_email({"id": "t", "subject": "x", "body": "y", "from": "sam@forwarder.example"})
+    contacts = [(o.contact_name, o.contact_email) for o in result.opportunities]
+    assert contacts == [(None, None), (None, None), (None, None), ("Jo", "grants@fund.example")]
 
 
 def test_strict_schema_requires_all_keys():
@@ -92,12 +125,7 @@ def test_parse_email_irrelevant_no_opps(monkeypatch):
 def test_parse_email_drops_repeated_opportunity(monkeypatch):
     import json
 
-    opp = {
-        "funder_name": "Road Fund", "program_name": "Safer Roads", "amount": None,
-        "amount_max": None, "type": "trust", "deadline": "unknown", "location": "UK",
-        "duration_months": None, "capital_cost": False, "description": "x", "notes": "",
-        "website": None, "contact_name": None, "contact_email": None,
-    }
+    opp = _opp_item(funder_name="Road Fund", program_name="Safer Roads")
     payload = {"classification": "FUNDING_OPPORTUNITY", "confidence": 0.9, "opportunities": [opp, dict(opp)]}
     monkeypatch.setattr(llm, "_chat", lambda system, user, *, stage, schema: json.dumps(payload))
     result = llm.parse_email({"id": "test", "subject": "x", "body": "y"})

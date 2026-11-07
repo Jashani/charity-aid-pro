@@ -8,10 +8,11 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
 
-FundingType = Literal["grant", "trust", "lottery", "corporate", "government"]
-OpportunityStatus = Literal[
-    "identified", "researching", "applying", "submitted", "awarded", "rejected", "dismissed"
+FundingType = Literal[
+    "trust_foundation", "corporate", "local_authority", "central_government", "lottery", "individual"
 ]
+# "dismissed" opportunities are not written to Airtable.
+OpportunityStatus = Literal["identified", "dismissed"]
 ClassificationLabel = Literal["FUNDING_OPPORTUNITY", "NEWSLETTER", "IRRELEVANT"]
 
 
@@ -19,8 +20,9 @@ class FundingOpportunity(BaseModel):
     id: str
     funder_name: str
     program_name: str
-    amount: float
+    amount_min: float | None = None
     amount_max: float | None = None
+    amount_typical: float | None = None
     type: FundingType
     deadline: str
     location: str
@@ -34,10 +36,9 @@ class FundingOpportunity(BaseModel):
     @classmethod
     def _coerce_none_to_empty(cls, v: Any) -> str:
         return v if v is not None else ''
-    duration_months: int = 12
+    duration_months: int | None = None
     status: OpportunityStatus = "identified"
     score: float = Field(default=0.0, ge=0.0, le=100.0)
-    tags: list[str] = Field(default_factory=list)
     description: str = ""
     notes: str = ""
     website: str = ""
@@ -75,3 +76,6 @@ class ParsedEmail(BaseModel):
     classification: ClassificationLabel
     classification_confidence: float = Field(ge=0.0, le=1.0)
     opportunities: list[FundingOpportunity] = Field(default_factory=list)
+    # Opportunities that failed the checks. Only in the run log and the JSON
+    # payload (GitHub Actions artifact), never in Airtable.
+    dismissed: list[FundingOpportunity] = Field(default_factory=list)

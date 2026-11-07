@@ -16,7 +16,7 @@ This document uses ASD-STE100 (Simplified Technical English).
 | `run.py` | Command-line entry point. It does fetch → parse → score → write → mark as read. |
 | `outlook.py` | Outlook login (MSAL device code) and email fetch (Microsoft Graph) |
 | `llm.py` | OpenAI-compatible LLM client and `parse_email()` |
-| `scoring.py` | Geography check, eligibility check, score and tags |
+| `scoring.py` | Geography check, eligibility check and score |
 | `storage.py` | Airtable write. It adds new records and does not change records that are already in the table. |
 | `schema.py` | Pydantic data models |
 | `config.py` | Environment variables |
@@ -28,8 +28,8 @@ This document uses ASD-STE100 (Simplified Technical English).
 1. `outlook.fetch_recent()` gets the emails.
 2. `llm.parse_email()` gives a classification and a list of
    `FundingOpportunity` objects.
-3. `scoring.score_all()` sets the gating result, the score, the status and
-   the tags.
+3. `scoring.score_all()` sets the gating result, the score and the status.
+   `run.process_email()` removes the opportunities with status `dismissed`.
 4. `storage.store_parsed_email()` adds the opportunities to Airtable.
    `storage.opp_to_fields()` converts one opportunity to Airtable fields.
 5. `outlook.mark_as_read()` marks the email as read.

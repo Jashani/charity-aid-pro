@@ -16,11 +16,6 @@ def airtable(monkeypatch):
 
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
-        if request.method == "GET" and path.endswith(config.AIRTABLE_ORGANISATIONS_TABLE):
-            return httpx.Response(200, json={"records": [
-                {"id": "recOrg1", "fields": {"Name": "The Example Trust"}},
-                {"id": "recOrg2", "fields": {"Name": "Other Funder"}},
-            ]})
         if request.method == "GET" and path.endswith(config.AIRTABLE_OPPORTUNITIES_TABLE):
             assert "msg-123#" in request.url.params["filterByFormula"]
             return httpx.Response(200, json={"records": [
@@ -34,14 +29,7 @@ def airtable(monkeypatch):
 
     client = httpx.Client(base_url="https://api.airtable.test/v0/app", transport=httpx.MockTransport(handler))
     monkeypatch.setattr(storage, "_client", lambda: client)
-    storage._organisation_index.cache_clear()
     yield created, state
-    storage._organisation_index.cache_clear()
-
-
-def test_normalise_org_name():
-    assert storage.normalise_org_name("  The Salters’  Foundation ") == "salters' foundation"
-    assert storage.normalise_org_name("") == ""
 
 
 def test_opp_to_fields_maps_values(airtable, opportunity, parsed_email):
@@ -59,11 +47,13 @@ def test_opp_to_fields_maps_values(airtable, opportunity, parsed_email):
     assert fields["Status"] == "New"
     assert fields["Score"] == 82
     assert fields["Deadline"] == "2026-07-01"
-    assert fields["Funding Type"] == "Trust"
-    assert fields["Gating"] == "Passed"
+    assert fields["Funding Type"] == "Trust & Foundation"
+    assert fields["Amount Min"] == 10000
+    assert fields["Amount Max"] == 25000
     assert fields["Activity Score"] == 70
     assert fields["Score Reasoning"] == "Good fit"
-    assert fields["Organisation"] == ["recOrg1"]
+    for removed in ("Organisation", "Tags", "Gating", "Dismissal Reason", "Amount"):
+        assert removed not in fields
     assert fields["Email From"] == "alerts@example.org"
     assert fields["Source ID"] == "msg-123#0"
     # Invalid email and empty values are left out.
@@ -85,17 +75,11 @@ def test_opp_to_fields_unknown_deadline_left_blank(airtable, opportunity, parsed
     assert "Notes" not in fields
 
 
-def test_opp_to_fields_geography_failure(airtable, opportunity, parsed_email):
-    opportunity.funder_name = "Unlisted Funder"
-    opportunity.gating = {
-        "status": "failed",
-        "geography": {"pass": False, "reasoning": "Scotland only"},
-        "score": {"pass": False, "reasoning": "Skipped — geography hard fail"},
-    }
+def test_unknown_programme_left_blank(airtable, opportunity, parsed_email):
+    opportunity.program_name = "Unknown"
     fields = storage.opp_to_fields(opportunity, parsed_email, "msg-123#0")
-    assert fields["Gating"] == "Failed"
-    assert fields["Score Reasoning"] == "Geography check failed: Scotland only"
-    assert "Organisation" not in fields
+    assert fields["Opportunity"] == "Example Trust"
+    assert "Programme" not in fields
 
 
 def test_store_creates_only_new_records(airtable, opportunity, parsed_email):
