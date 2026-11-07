@@ -14,12 +14,12 @@ import logging
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 from openai import OpenAI
 
 from . import config
-from .schema import FundingOpportunity, ParseResult
+from .schema import FundingOpportunity, FundingType, ParseResult
 
 
 logger = logging.getLogger(__name__)
@@ -54,13 +54,13 @@ _OPPORTUNITY_SCHEMA = {
     "properties": {
         "funder_name": {"type": "string"},
         "program_name": _nullable("string"),
-        "amount": _nullable("number"),
+        "amount_min": _nullable("number"),
         "amount_max": _nullable("number"),
-        "type": {"type": "string", "enum": ["grant", "trust", "lottery", "corporate", "government"]},
+        "amount_typical": _nullable("number"),
+        "type": {"type": "string", "enum": list(get_args(FundingType))},
         "deadline": {"type": "string"},
         "location": {"type": "string"},
         "duration_months": _nullable("integer"),
-        "capital_cost": {"type": "boolean"},
         "description": {"type": "string"},
         "notes": {"type": "string"},
         "website": _nullable("string"),
@@ -155,15 +155,42 @@ def _parse_json(raw: str, *, stage: str) -> Any:
         raise LLMError(f"{stage}: invalid JSON: {exc}") from exc
 
 
+# Email domains of newsletter publishers and of M4W. An address at one of these
+# domains is the newsletter sender or the person who forwarded the email, not
+# the funder's contact. Add a domain here if wrong contacts come through.
+NOT_FUNDER_CONTACT_DOMAINS = (
+    "idoxgroup.com",
+    "funded.team",
+    "music4wellbeing.org.uk",
+    "music4wellbeing.org",
+)
+
+
+def _sender_address(sender: str) -> str:
+    match = re.search(r"[^<>\s]+@[^<>\s]+", sender or "")
+    return match.group(0).casefold() if match else ""
+
+
+def _clear_wrong_contact(opp: FundingOpportunity, sender: str) -> None:
+    """Remove a contact that is the newsletter sender or the forwarder."""
+    address = (opp.contact_email or "").strip().casefold()
+    if not address:
+        return
+    domain = address.rsplit("@", 1)[-1]
+    if address == _sender_address(sender) or domain in NOT_FUNDER_CONTACT_DOMAINS:
+        logger.info("Removing contact %s %s — not the funder", opp.contact_name, address)
+        opp.contact_name = None
+        opp.contact_email = None
+
+
 def _to_opportunity(item: dict[str, Any], idx: int) -> FundingOpportunity:
-    """Convert one LLM opportunity to the model; fill the defaults the prompt leaves null."""
+    """Convert one LLM opportunity to the model."""
     item = dict(item)
     item["id"] = f"opp-{idx}"
-    if item.get("amount") is None:
-        item["amount"] = 0
-    if item.get("duration_months") is None:
-        item["duration_months"] = 12
-    item["tags"] = ["Capital Cost"] if item.pop("capital_cost", False) else []
+    low, high = item.get("amount_min"), item.get("amount_max")
+    if item.get("amount_typical") is None and low and high and high > low:
+        # The email gives a range but no typical award: use the midpoint.
+        item["amount_typical"] = round((low + high) / 2)
     return FundingOpportunity(**item)
 
 
@@ -202,6 +229,7 @@ def parse_email(email: dict[str, Any]) -> ParseResult:
             logger.info("Skipping repeated opportunity %s — %s", opp.funder_name, opp.program_name)
             continue
         seen.add(key)
+        _clear_wrong_contact(opp, email.get("from", ""))
         opportunities.append(opp)
 
     return ParseResult(

@@ -36,11 +36,29 @@ the classification.
 Step 4. For each opportunity that you kept, fill in these fields:
 - funder_name: The organisation that gives the money.
 - program_name: The name of the fund or programme. If it has no name, use null.
-- amount: The minimum award, or the only award, in GBP. If not given, use null.
+- amount_min: The minimum award in GBP. If the email gives only one amount
+  (for example "grants of £5,000" or "up to £5,000"), use null here and put
+  the amount in amount_max. If not given, use null.
 - amount_max: The maximum award in GBP. If not given, use null.
-- type: "lottery" for National Lottery funds. "government" for central
-  government, local government and public bodies. "corporate" for companies.
-  "trust" for charitable trusts and foundations. "grant" for all others.
+- amount_typical: The typical or average award in GBP, only if the email
+  states it (for example "most grants are about £3,000" or "average grant
+  £4,000"). Do not calculate it. If not given, use null.
+- type: The type of funder. Use one of these values:
+  - "trust_foundation": Charitable trusts and foundations. This includes
+    community foundations, livery companies (for example "The Leathersellers'
+    Company" or "Leathersellers' Foundation"), grant-giving charities and
+    charity match-funding campaigns (for example The Big Give).
+  - "corporate": A company gives the money from its business. A registered
+    charitable foundation that a company set up is "trust_foundation".
+  - "local_authority": County, district, borough, city, town and parish
+    councils (for example Kent County Council).
+  - "central_government": Central government departments and national public
+    bodies. This includes Arts Council England, also when it gives National
+    Lottery money, and the NHS.
+  - "lottery": National Lottery funds (for example The National Lottery
+    Community Fund or The National Lottery Heritage Fund) and other lotteries.
+  - "individual": One private person gives the money.
+  If you are not sure, use "trust_foundation".
 - deadline: The closing date as YYYY-MM-DD. If the email gives no year, use
   the first such date on or after the email date. If the deadline is not a
   date (for example "rolling" or "end of March"), copy the words. If there
@@ -49,17 +67,23 @@ Step 4. For each opportunity that you kept, fill in these fields:
   use "unknown".
 - duration_months: The maximum length of the funding in months. If not
   given, use null.
-- capital_cost: true if the money is for buildings or equipment. Else false.
 - description: 2 or 3 sentences. Say what the fund pays for and who can apply.
 - notes: Other useful facts, such as eligibility rules or how to apply. If
   there are none, use "".
 - website: The most specific URL for this opportunity, such as the
   application page. Examine all of the email, including links and the
   footer. If there is no URL, use null.
-- contact_name: The name of the contact person. If not given, use null.
-- contact_email: The email address for questions about this opportunity.
-  Examine all of the email, including the signature. If there is no
-  address, use null.
+- contact_name: The name of the contact person at the funder. If not given,
+  use null.
+- contact_email: The email address at the funder for questions about this
+  opportunity. Examine all of the email, including the signature. If there
+  is no address, use null.
+  The contact must be a person or address at the funder. Do not use these:
+  - The person who forwarded the email, or the "From" address.
+  - The publisher of a newsletter or funding bulletin (for example Idox,
+    Funded or a council funding newsletter), its editor or its footer
+    address. These are not the funder.
+  - Music4Wellbeing staff.
 
 Use only facts from the email. Do not guess values.
 Give only the JSON object.

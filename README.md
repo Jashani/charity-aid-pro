@@ -15,8 +15,8 @@ This document uses ASD-STE100 (Simplified Technical English).
 ┌──────────────────────┐    ┌──────────────────────────┐    ┌───────────────────────────┐
 │ Funding mailbox      │    │ Email pipeline           │    │ Airtable                  │
 │ (personal Outlook)   │───▶│ GitHub Actions, daily    │───▶│ Base "Music4Wellbeing"    │
-│                      │    │ 09:00 UTC                │    │ Table "Opportunities"     │
-└──────────────────────┘    │ fetch → parse → score    │    │ (links to "Organisations")│
+│                      │    │ 09:17 UTC                │    │ Table "Opportunities"     │
+└──────────────────────┘    │ fetch → parse → score    │    │                           │
                             │ → write → mark as read   │    └───────────────────────────┘
                             └────────────┬─────────────┘
                                          │
@@ -48,14 +48,14 @@ charity-aid-pro/
 │   ├── run.py                      # Command-line entry point
 │   ├── outlook.py                  # Outlook login and email fetch (Microsoft Graph)
 │   ├── llm.py                      # LLM client and email parse
-│   ├── scoring.py                  # Geography check, eligibility check, score, tags
+│   ├── scoring.py                  # Geography check, eligibility check, score
 │   ├── storage.py                  # Airtable write
 │   ├── schema.py                   # Data models (Pydantic)
 │   ├── config.py                   # Environment variables
 │   ├── prompts/                    # The LLM prompts (see section 9)
 │   └── tests/                      # Unit tests
 └── .github/workflows/
-    └── email-pipeline.yml          # Daily schedule (09:00 UTC)
+    └── email-pipeline.yml          # Daily schedule (09:17 UTC)
 ```
 
 ---
@@ -71,25 +71,24 @@ opportunity.
 | Field | Type | Value |
 |---|---|---|
 | Opportunity | Text | Programme name and funder name |
-| Status | Single select | The pipeline sets `New` or `Opportunity Dismissed`. Your team changes it after that. |
+| Status | Single select | The pipeline sets `New`. Your team changes it after that (`On Hold`, `Research`, `In Progress` or `Opportunity Dismissed`). |
 | Score | Number | 0 to 100. See section 6. |
 | Funder | Text | Funder name |
 | Programme | Text | Programme name |
-| Organisation | Link to "Organisations" | The pipeline sets this link only if an Organisations record has the same name. It does not make new Organisations records. |
 | Deadline | Date | Application deadline. Empty if the email does not give a date. |
-| Amount | Currency (£) | Minimum or exact award. 0 if the email does not give an amount. |
-| Amount Max | Currency (£) | Maximum award, if the email gives a range |
-| Funding Type | Single select | Grant, Trust, Lottery, Corporate or Government |
+| Amount Min | Currency (£) | Minimum award. Empty if the email does not give one. |
+| Amount Max | Currency (£) | Maximum award. If the email gives only one amount ("up to £5,000"), it is here. |
+| Amount Typical | Currency | Typical or average award, if the email gives it. If the email gives only a range, the pipeline writes the midpoint. |
+| Funding Type | Single select | Trust & Foundation (includes livery companies), Corporate, Local Authority, Central Government (includes Arts Council England), Lottery or Individual |
 | Location | Text | Area where the funder accepts applications |
-| Duration (Months) | Number | Length of the funding. 12 if the email does not give a length. |
-| Tags | Multiple select | Quick Win, Multi-Year, Capital Cost, Strong Match, High Value |
+| Duration (Months) | Number | Length of the funding, from the email. Empty if the email does not give a length. |
 | Description | Long text | Summary of the opportunity (2 or 3 sentences) |
 | Website | URL | Link to the opportunity |
-| Contact Name | Text | Contact person |
-| Contact Email | Email | Contact email address |
+| Contact Name | Text | Contact person at the funder. The pipeline does not write the newsletter publisher (for example Idox or Funded), the person who forwarded the email, or M4W staff. |
+| Contact Email | Email | Contact email address at the funder. Same rules as Contact Name. |
 | Notes | Long text | Other information. If the deadline is not a date (for example, "end of March"), the pipeline writes it here. |
-| Dismissal Reason | Long text | Why the pipeline or your team dismissed the opportunity |
-| Gating | Single select | Passed, Needs Review or Failed. The result of the geography and eligibility checks. |
+| Dismissal Reason | Single select | Your team sets it when it dismisses an opportunity. The pipeline does not write it. |
+| Dismissal Notes | Long text | More information about the dismissal. Your team writes it. Older records have the LLM reasoning here. |
 | Activity Score | Number | 0 to 100. See section 6. |
 | Audience Score | Number | 0 to 100. See section 6. |
 | Score Reasoning | Long text | The reason for the score, from the LLM |
@@ -108,8 +107,16 @@ opportunity.
   Delete the duplicate record manually.
 - When you apply for an opportunity, add a record in "Grants & Funding".
   The "Opportunities" table does not record application data.
-- If the geography check fails, the status stays `New` and Gating is
-  `Failed`. Use a filter on Gating to hide these records.
+- The pipeline does not add opportunities that fail the geography check or
+  the eligibility check (see section 6). They are only in the workflow log
+  and in `parsed.json` (section 7.1). Thus all new records have the status
+  `New`.
+- Records added before November 2026 can have the status
+  `Opportunity Dismissed` from the pipeline, and a value in the old field
+  "Gating". The pipeline no longer writes "Gating". You can delete that
+  field.
+- The pipeline does not save the full email. To see the source email,
+  search the mailbox for the Email Subject or the Funder.
 
 ### 3.2 Data from the old system
 
@@ -139,8 +146,8 @@ The pipeline does these steps for each run:
    If the email gives the same opportunity two times, the pipeline keeps
    one.
 4. **Score.** The pipeline does a geography check and an eligibility check
-   on each opportunity. Then it calculates a score and adds tags. See
-   section 6.
+   on each opportunity. Then it calculates a score. If a check fails, the
+   pipeline removes the opportunity. See section 6.
 5. **Write.** The pipeline adds each new opportunity to the "Opportunities"
    table. If a record with the same Source ID is already in the table, the
    pipeline does not change it.
@@ -194,7 +201,6 @@ repository and to the Airtable base.
 | `MSAL_CLIENT_ID` | The registered Microsoft Entra app ID |
 | `AIRTABLE_BASE_ID` | `apptkzNqMPnlzdyhA` (Music4Wellbeing) |
 | `AIRTABLE_OPPORTUNITIES_TABLE` | `tbla8L8gUX6xN1XeO` (Opportunities) |
-| `AIRTABLE_ORGANISATIONS_TABLE` | `tblZ54ACx9Cqs1oAr` (Organisations) |
 
 ### 5.3 Log in to the Outlook mailbox
 
@@ -228,36 +234,34 @@ Do this procedure for the first setup. Do it again if the login expires.
 
 ---
 
-## 6. Score and tags
+## 6. Score
 
 The pipeline does these checks on each opportunity:
 
 1. **Geography check.** The LLM checks that the funder accepts applications
    from Kent. If the location is clear (for example "UK" or "England"), the
-   pipeline does not use the LLM. If the LLM call fails, a keyword list does the check. If the
-   check fails, the score is 0 and Gating is `Failed`.
+   pipeline does not use the LLM. If the LLM call fails, a keyword list does
+   the check. If the check fails, the pipeline removes the opportunity.
 2. **Eligibility check and score.** The LLM gives two scores from 0 to 100:
    - **Activity score:** how well the activity agrees with group therapeutic
      music sessions.
    - **Audience score:** how well the audience agrees with people in need
      because of ill health, disability or age.
 
-   Score = 40% activity score + 60% audience score.
+   Score = 40% activity score + 60% audience score. The audience has more
+   weight because the wrong beneficiaries is a larger mismatch than the
+   wrong activity.
 
-   If the score is less than 20, or the LLM finds that M4W is not eligible,
-   the status is `Opportunity Dismissed`. If the LLM call fails, a keyword
-   list calculates the score.
-3. **Tags.** The pipeline adds these tags:
+   If the score is less than 20, or the LLM finds that M4W cannot apply (for
+   example, the fund is only for individuals), the pipeline removes the
+   opportunity. If the LLM call fails, a keyword list calculates the score.
 
-| Tag | Condition |
-|---|---|
-| Quick Win | The deadline is in less than 30 days, and the email tells of a short application (for example, an expression of interest) |
-| Multi-Year | The duration is 24 months or more |
-| Strong Match | The score is 80 or more |
-| High Value | The maximum amount is £30,000 or more |
+The pipeline writes each removed opportunity and its reason in the workflow
+log, with the text `dismissed (not stored)`. Examine these lines to find
+opportunities that the pipeline removed incorrectly.
 
-The pipeline also adds the tag `Capital Cost` if the LLM finds that the
-money is for buildings or equipment.
+The score ranges (the rubric) are in `email_parsing/prompts/score.txt`. To
+change the rubric, see [HOW_TO_MAKE_CHANGES.md](HOW_TO_MAKE_CHANGES.md).
 
 ---
 
@@ -266,9 +270,16 @@ money is for buildings or equipment.
 ### 7.1 Automatic run
 
 The workflow `.github/workflows/email-pipeline.yml` runs each day at
-09:00 UTC (09:00 GMT, 10:00 BST). It fetches a maximum of 25 unread emails.
+09:17 UTC (09:17 GMT, 10:17 BST). It fetches a maximum of 25 unread emails.
 It marks each processed email as read. It keeps the full result
-(`parsed.json`) as a workflow artifact for 14 days.
+(`parsed.json`) as a workflow artifact for 14 days. `parsed.json` also
+contains the removed opportunities (`dismissed`).
+
+> **NOTE:** GitHub can start a scheduled run some hours late when it is busy.
+> GitHub also stops the schedule of a public repository after 60 days with
+> no commits. This stopped the pipeline from 17 August to 4 November 2026.
+> Now each scheduled run enables the workflow again, and this resets the
+> 60-day count.
 
 ### 7.2 Manual run in GitHub
 
@@ -342,7 +353,6 @@ The pipeline reads these environment variables ([config.py](email_parsing/config
 | `AIRTABLE_TOKEN` | Yes, for the write | — | Airtable personal access token |
 | `AIRTABLE_BASE_ID` | No | `apptkzNqMPnlzdyhA` | Airtable base ID |
 | `AIRTABLE_OPPORTUNITIES_TABLE` | No | `tbla8L8gUX6xN1XeO` | "Opportunities" table ID |
-| `AIRTABLE_ORGANISATIONS_TABLE` | No | `tblZ54ACx9Cqs1oAr` | "Organisations" table ID |
 | `MSAL_CLIENT_ID` | No | The registered Entra app ID | Change only if you register a new app |
 | `MSAL_CACHE_FILE` | No | `<repo>/token_cache.bin` | Local Outlook login cache |
 | `MSAL_TOKEN_CACHE_B64` | Yes, in GitHub | — | Base64 Outlook login cache. It overrides the file. |
@@ -415,7 +425,8 @@ and writes a warning in the log.
 | The same email is processed each day | The write to Airtable fails, so the email stays unread | Look at the workflow log for the error. |
 | The log shows `Daily LLM token limit reached — stopping` | The Groq free plan limit for each day is used | Do nothing. The next run processes the unread emails. See section 9.1. |
 | The log shows `LLM call failed` with `400` | The model is stopped, or it does not support structured outputs | Make sure that the model is in the [Groq model list](https://console.groq.com/docs/models). See section 9.1. |
-| The workflow does not run each day | GitHub stops scheduled workflows in a public repository after 60 days with no activity | Go to **Actions → Email parsing pipeline** and click **Enable workflow**. |
+| The workflow does not run each day | GitHub stopped the schedule (60 days with no commits), or GitHub is late | Go to **Actions → Email parsing pipeline**. If you see **Enable workflow**, click it. A run that starts some hours late is normal. |
+| A contact is the newsletter publisher | The LLM used the newsletter address | Add the email domain to `NOT_FUNDER_CONTACT_DOMAINS` in `email_parsing/llm.py`. |
 
 ---
 

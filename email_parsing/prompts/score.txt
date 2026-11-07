@@ -30,7 +30,8 @@ beneficiaries of M4W?
   health, disability, or carers.
 
 Set "pass" to false only if the rules of the fund do not let M4W apply.
-Examples: the fund is only for individuals, for schools, or for a different
+Examples: the fund is only for individuals (for example grants to individual
+artists, musicians or students), only for schools, or only for a different
 type of organisation. A weak fit is not a reason to set "pass" to false. The
 scores show the fit. Else set "pass" to true.
 Set "reasoning" to one sentence about the two scores.

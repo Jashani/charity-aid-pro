@@ -114,8 +114,8 @@ def test_score_keyword_fallback_passes_on_m4w_text(opportunity):
 def test_score_keyword_fallback_fails_on_sector_mismatch():
     opp = FundingOpportunity(
         id="opp-x", funder_name="Forestry Commission",
-        program_name="Tree Planting Fund", amount=10000,
-        type="government", deadline="unknown", location="England",
+        program_name="Tree Planting Fund", amount_min=10000,
+        type="central_government", deadline="unknown", location="England",
         description="Grants to support tree planting and forestry projects.",
     )
     result = scoring._score_keyword_fallback(opp)
@@ -125,26 +125,19 @@ def test_score_keyword_fallback_fails_on_sector_mismatch():
 def test_score_keyword_fallback_fails_on_stem():
     opp = FundingOpportunity(
         id="opp-x", funder_name="Royal Institution",
-        program_name="STEM Education Grants", amount=5000,
-        type="trust", deadline="unknown", location="UK",
+        program_name="STEM Education Grants", amount_min=5000,
+        type="trust_foundation", deadline="unknown", location="UK",
         description="Grants for schools to support STEM subjects.",
     )
     result = scoring._score_keyword_fallback(opp)
     assert result["pass"] is False
 
 
-def test_strong_match_tag_at_80(opportunity, monkeypatch):
-    monkeypatch.setattr(scoring, "_geography_with_llm", scoring._geography_keyword_fallback)
-    monkeypatch.setattr(scoring, "_score_with_llm", _stub_pass(80, 80))
+def test_geography_fail_is_dismissed(opportunity, monkeypatch):
+    monkeypatch.setattr(scoring, "_geography_with_llm", lambda loc: {"pass": False, "reasoning": "Scotland only"})
     result = scoring.score_opportunity(opportunity)
-    assert "Strong Match" in result.tags
-
-
-def test_no_strong_match_tag_below_80(opportunity, monkeypatch):
-    monkeypatch.setattr(scoring, "_geography_with_llm", scoring._geography_keyword_fallback)
-    monkeypatch.setattr(scoring, "_score_with_llm", _stub_pass(60, 70))
-    result = scoring.score_opportunity(opportunity)
-    assert "Strong Match" not in result.tags
+    assert result.status == "dismissed"
+    assert "Scotland only" in result.dismissal_reason
 
 
 def test_geography_clear_location_skips_llm(monkeypatch):
@@ -166,3 +159,23 @@ def test_daily_limit_is_not_hidden_by_fallback(opportunity, monkeypatch):
         scoring._score_with_llm(opportunity)
     with pytest.raises(DailyLimitError):
         scoring._geography_with_llm("Hampshire")
+
+
+def test_process_email_drops_dismissed(opportunity, monkeypatch):
+    from email_parsing import llm, run
+    from email_parsing.schema import ParseResult
+
+    bad = opportunity.model_copy(update={"funder_name": "Bad Fund"})
+    monkeypatch.setattr(llm, "parse_email", lambda email: ParseResult(
+        classification="FUNDING_OPPORTUNITY", classification_confidence=0.9,
+        opportunities=[opportunity, bad]))
+
+    def fake_score(opps):
+        for o in opps:
+            o.status = "dismissed" if o.funder_name == "Bad Fund" else "identified"
+        return opps
+    monkeypatch.setattr(scoring, "score_all", fake_score)
+
+    parsed = run.process_email({"id": "m1", "subject": "s", "from": "a@b.c", "receivedDateTime": ""})
+    assert [o.funder_name for o in parsed.opportunities] == ["Example Trust"]
+    assert [o.funder_name for o in parsed.dismissed] == ["Bad Fund"]

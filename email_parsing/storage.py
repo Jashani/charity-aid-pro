@@ -1,7 +1,7 @@
 """Airtable persistence for parsed + scored opportunities.
 
 Each opportunity becomes one record in the Airtable "Opportunities" table.
-Records are keyed on the `Source ID` field (`{emailId}#{idx}`). A rerun on the
+Only opportunities that pass the checks are written. Records are keyed on the `Source ID` field (`{emailId}#{idx}`). A rerun on the
 same email skips records that already exist, so edits the team makes in
 Airtable (status, notes, ...) are never overwritten by the pipeline.
 """
@@ -30,17 +30,15 @@ _BATCH_SIZE = 10
 _RATE_LIMIT_WAIT_SECONDS = 30
 _MAX_RETRIES = 3
 
-# Pipeline status → Airtable "Status" option. Same labels as "Grants & Funding".
-STATUS_LABELS = {
-    "identified": "New",
-    "researching": "Research",
-    "applying": "In Progress",
-    "submitted": "Full Application Submitted",
-    "awarded": "Awarded",
-    "rejected": "Application Rejected",
-    "dismissed": "Opportunity Dismissed",
+# Pipeline funding type → Airtable "Funding Type" option.
+FUNDING_TYPE_LABELS = {
+    "trust_foundation": "Trust & Foundation",
+    "corporate": "Corporate",
+    "local_authority": "Local Authority",
+    "central_government": "Central Government",
+    "lottery": "Lottery",
+    "individual": "Individual",
 }
-GATING_LABELS = {"passed": "Passed", "needs_review": "Needs Review", "failed": "Failed"}
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -84,26 +82,6 @@ def _formula_string(value: str) -> str:
     return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
 
-# ── Organisation matching ────────────────────────────────────────────────────
-
-def normalise_org_name(name: str) -> str:
-    """Lowercase, unify apostrophes, drop a leading "the", collapse whitespace."""
-    text = (name or "").casefold().replace("’", "'").strip()
-    text = re.sub(r"^the\s+", "", text)
-    return re.sub(r"\s+", " ", text)
-
-
-@lru_cache(maxsize=1)
-def _organisation_index() -> dict[str, str]:
-    """Map normalised Organisations names to their record ids (one fetch per run)."""
-    index: dict[str, str] = {}
-    for rec in _list_records(config.AIRTABLE_ORGANISATIONS_TABLE, {"fields[]": "Name"}):
-        name = normalise_org_name(rec.get("fields", {}).get("Name", ""))
-        if name:
-            index.setdefault(name, rec["id"])
-    return index
-
-
 # ── Record mapping ───────────────────────────────────────────────────────────
 
 def _iso_date(value: str | None) -> str | None:
@@ -131,39 +109,38 @@ def opp_to_fields(opp: FundingOpportunity, parsed: ParsedEmail, source_id: str) 
         notes = f"{notes}\nDeadline as written: {opp.deadline}".strip()
 
     title = opp.funder_name
-    if opp.program_name.strip().lower() not in ("", "unknown", "n/a"):
-        title = f"{opp.program_name} – {opp.funder_name}"
+    programme = opp.program_name.strip()
+    if programme.lower() in ("unknown", "n/a"):
+        programme = ""
+    if programme:
+        title = f"{programme} – {opp.funder_name}"
 
-    gating = opp.gating or {}
-    score_check = gating.get("score") or {}
-    geography = gating.get("geography") or {}
-    reasoning = score_check.get("reasoning", "")
-    if geography and not geography.get("pass", True):
-        reasoning = f"Geography check failed: {geography.get('reasoning', '')}"
+    score_check = (opp.gating or {}).get("score") or {}
 
+    # Only opportunities that pass the checks get here (dismissed ones are not
+    # written), so the pipeline does not write Status "Opportunity Dismissed",
+    # "Dismissal Reason" or "Gating".
     fields: dict[str, Any] = {
         "Opportunity": title,
-        "Status": STATUS_LABELS.get(opp.status, "New"),
+        "Status": "New",
         "Score": opp.final_score if opp.final_score is not None else opp.score,
         "Funder": opp.funder_name,
-        "Programme": opp.program_name,
+        "Programme": programme,
         "Deadline": deadline,
-        "Amount": opp.amount,
+        "Amount Min": opp.amount_min,
         "Amount Max": opp.amount_max,
-        "Funding Type": opp.type.capitalize(),
+        "Amount Typical": opp.amount_typical,
+        "Funding Type": FUNDING_TYPE_LABELS.get(opp.type),
         "Location": opp.location,
         "Duration (Months)": opp.duration_months,
-        "Tags": opp.tags,
         "Description": opp.description,
         "Website": opp.website,
         "Contact Name": opp.contact_name,
         "Contact Email": _valid_email(opp.contact_email),
         "Notes": notes,
-        "Dismissal Reason": opp.dismissal_reason,
-        "Gating": GATING_LABELS.get(gating.get("status", "")),
         "Activity Score": score_check.get("activity_score"),
         "Audience Score": score_check.get("audience_score"),
-        "Score Reasoning": reasoning,
+        "Score Reasoning": score_check.get("reasoning", ""),
         "Scored At": opp.scored_at.isoformat() if opp.scored_at else None,
         "Date Found": parsed.parsed_at.isoformat(),
         "Email Subject": parsed.email_subject,
@@ -171,10 +148,6 @@ def opp_to_fields(opp: FundingOpportunity, parsed: ParsedEmail, source_id: str) 
         "Email Received": parsed.email_received_at.isoformat(),
         "Source ID": source_id,
     }
-
-    org_id = _organisation_index().get(normalise_org_name(opp.funder_name))
-    if org_id:
-        fields["Organisation"] = [org_id]
 
     return {k: v for k, v in fields.items() if v not in (None, "", [])}
 
@@ -218,7 +191,7 @@ def store_parsed_email(parsed: ParsedEmail) -> int:
         _request(
             "POST",
             f"/{config.AIRTABLE_OPPORTUNITIES_TABLE}",
-            # typecast lets Airtable add new Tags options instead of rejecting them.
+            # typecast lets Airtable add a missing select option instead of rejecting the record.
             json={"records": records[start:start + _BATCH_SIZE], "typecast": True},
         )
 

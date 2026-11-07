@@ -6,15 +6,17 @@ Stages, in order, per opportunity:
    Hard-fail short-circuits all further processing.
 
 2. Combined eligibility + scoring — single LLM call with keyword fallback.
-   Returns pass/fail and a 0–100 score based on mission alignment and value.
+   Returns pass/fail and a 0–100 score based on mission alignment.
    pass=false (score < 20 or clearly ineligible) → opportunity dismissed.
+
+Dismissed opportunities are not written to Airtable (see run.process_email).
 """
 
 from __future__ import annotations
 
 import logging
 import re
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from typing import Any
 
 from .llm import DailyLimitError, LLMError, _chat, _parse_json, load_prompt
@@ -184,9 +186,15 @@ _SCORE_SCHEMA = {
 
 def _score_with_llm(opp: FundingOpportunity) -> dict[str, Any]:
     """Single LLM call: eligibility gate + two-dimension mission-alignment score."""
-    amount_str = f"£{opp.amount:,.0f}" if opp.amount else "unknown"
-    if opp.amount_max and opp.amount_max > opp.amount:
-        amount_str = f"up to £{opp.amount_max:,.0f}" if not opp.amount else f"{amount_str}–£{opp.amount_max:,.0f}"
+    low, high = opp.amount_min, opp.amount_max
+    if low and high and high > low:
+        amount_str = f"£{low:,.0f}–£{high:,.0f}"
+    elif high:
+        amount_str = f"up to £{high:,.0f}"
+    elif low:
+        amount_str = f"from £{low:,.0f}"
+    else:
+        amount_str = "unknown"
 
     user = (
         f"Funder: {opp.funder_name}\n"
@@ -223,33 +231,12 @@ def _score_with_llm(opp: FundingOpportunity) -> dict[str, Any]:
         return _score_keyword_fallback(opp)
 
 
-# ── Timing helper (used for tags only) ───────────────────────────────────────
-
-def _timing_score(deadline: str) -> int | None:
-    if not deadline or deadline == "unknown":
-        return None
-    try:
-        deadline_date = datetime.fromisoformat(deadline).date()
-    except ValueError:
-        return None
-    days = (deadline_date - date.today()).days
-    if days < 0:
-        return None
-    if days < 7:
-        return 10
-    if days < 30:
-        return 8
-    if days < 90:
-        return 6
-    if days < 180:
-        return 4
-    return 2
-
-
 # ── Pipeline entry point ──────────────────────────────────────────────────────
 
 def score_opportunity(opp: FundingOpportunity) -> FundingOpportunity:
-    """Run gating + scoring on *opp*, mutate it in place, and return it."""
+    """Run gating + scoring on *opp*, mutate it in place, and return it.
+
+    A failed check sets status "dismissed". The caller drops dismissed opportunities."""
 
     # 1. Geography gate
     geo = _geography_with_llm(opp.location)
@@ -262,6 +249,8 @@ def score_opportunity(opp: FundingOpportunity) -> FundingOpportunity:
         }
         opp.score = 0.0
         opp.final_score = 0.0
+        opp.dismissal_reason = f"Geography check failed: {geo.get('reasoning', '')}"
+        opp.status = "dismissed"
         opp.scored_at = datetime.now(timezone.utc)
         return opp
 
@@ -286,23 +275,6 @@ def score_opportunity(opp: FundingOpportunity) -> FundingOpportunity:
         opp.scored_at = datetime.now(timezone.utc)
         return opp
 
-    # 3. Post-scoring tags — pure heuristics, no LLM
-    timing = _timing_score(opp.deadline)
-    text = f"{opp.funder_name} {opp.program_name} {opp.description}".lower()
-    amount_max = opp.amount_max if opp.amount_max is not None else opp.amount
-
-    suggested: list[str] = []
-    if (timing or 0) >= 8 and re.search(
-        r"\b(eoi|expression of interest|short form|simple application|one-page)\b", text
-    ):
-        suggested.append("Quick Win")
-    if opp.duration_months >= 24:
-        suggested.append("Multi-Year")
-    if result["final_score"] >= 80:
-        suggested.append("Strong Match")
-    if amount_max >= 30_000:
-        suggested.append("High Value")
-
     opp.gating = {
         "status": "passed",
         "geography": {"pass": True, "reasoning": geo.get("reasoning", "")},
@@ -321,7 +293,6 @@ def score_opportunity(opp: FundingOpportunity) -> FundingOpportunity:
     }
     opp.score = float(result["final_score"])
     opp.final_score = float(result["final_score"])
-    opp.tags = sorted(set(opp.tags + suggested))
     opp.scored_at = datetime.now(timezone.utc)
     return opp
 
