@@ -14,7 +14,7 @@ This document uses ASD-STE100 (Simplified Technical English).
 | Module | Function |
 |---|---|
 | `run.py` | Command-line entry point. It does fetch → parse → score → write → mark as read. |
-| `outlook.py` | Outlook login (MSAL device code) and email fetch (Microsoft Graph) |
+| `outlook.py` | Microsoft 365 login (app-only, or MSAL device code) and email fetch (Microsoft Graph) |
 | `llm.py` | OpenAI-compatible LLM client and `parse_email()` |
 | `scoring.py` | Geography check, eligibility check and score |
 | `storage.py` | Airtable write. It adds new records and does not change records that are already in the table. |

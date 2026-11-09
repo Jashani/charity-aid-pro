@@ -3,7 +3,7 @@
 Usage:
     python -m email_parsing.run [--count N] [--mark-read] [--output PATH] [--no-store]
 
-Reads recent emails from a personal Outlook account, parses each via the LLM,
+Reads recent emails from the Microsoft 365 funding mailbox, parses each via the LLM,
 scores any extracted opportunities, and (by default) adds them to Airtable.
 A JSON summary is always printed to stdout; pass --output to also write the
 full parsed payload to disk.

@@ -1,8 +1,15 @@
-"""Personal Outlook mailbox access via MSAL device-code flow.
+"""Microsoft 365 (work) mailbox access via Microsoft Graph.
 
-One-time interactive auth: run `python -m email_parsing.outlook auth` to populate
-the token cache. The cache file refreshes silently afterwards. For CI, base64-
-encode the cache file and pass via the MSAL_TOKEN_CACHE_B64 env var.
+Two modes, chosen by config:
+
+* App-only (recommended; used when MSAL_CLIENT_SECRET is set): the app signs in
+  as itself with the client-credentials flow and reads MAILBOX_USER. No user
+  login, no token cache, no expiry of a refresh token. Needs the *application*
+  permission Mail.ReadWrite with admin consent.
+* Delegated (used when MSAL_CLIENT_SECRET is empty): device-code login as the
+  mailbox user. Run `python -m email_parsing.outlook auth` once to populate the
+  token cache. For CI, base64-encode the cache file and pass it via the
+  MSAL_TOKEN_CACHE_B64 env var.
 """
 
 from __future__ import annotations
@@ -26,12 +33,27 @@ from . import config
 
 logger = logging.getLogger(__name__)
 
-_AUTHORITY = "https://login.microsoftonline.com/consumers"
+_GRAPH = "https://graph.microsoft.com/v1.0"
 # Mail.ReadWrite — needed to flip isRead=true on processed messages, which is
 # how the cron pipeline knows what's already been handled. Mail.Read alone
 # would cause mark_as_read to 403 and break the watermark.
-_SCOPES = ["Mail.ReadWrite"]
-_GRAPH_INBOX = "https://graph.microsoft.com/v1.0/me/mailFolders/Inbox/messages"
+_DELEGATED_SCOPES = ["Mail.ReadWrite"]
+_APP_SCOPES = ["https://graph.microsoft.com/.default"]
+
+
+def _authority() -> str:
+    return f"https://login.microsoftonline.com/{config.MSAL_TENANT_ID}"
+
+
+def _app_only() -> bool:
+    return bool(config.MSAL_CLIENT_SECRET)
+
+
+def _mailbox_base() -> str:
+    """Graph URL prefix for the mailbox: /me (delegated) or /users/<mailbox> (app-only)."""
+    if _app_only():
+        return f"{_GRAPH}/users/{config.MAILBOX_USER}"
+    return f"{_GRAPH}/me"
 
 _markitdown = MarkItDown()
 
@@ -63,14 +85,35 @@ def _save_cache(cache: msal.SerializableTokenCache) -> None:
     path.write_text(cache.serialize())
 
 
+def _require_client_id() -> None:
+    if not config.MSAL_CLIENT_ID:
+        raise RuntimeError(
+            "MSAL_CLIENT_ID is not set. Register an Entra app in the "
+            f"{config.MSAL_TENANT_ID} tenant and set its application (client) ID."
+        )
+
+
 def _app(cache: msal.SerializableTokenCache) -> msal.PublicClientApplication:
+    _require_client_id()
     return msal.PublicClientApplication(
-        config.MSAL_CLIENT_ID, authority=_AUTHORITY, token_cache=cache
+        config.MSAL_CLIENT_ID, authority=_authority(), token_cache=cache
     )
 
 
 def get_access_token() -> str:
-    """Return a valid access token, refreshing silently if possible."""
+    """Return a valid access token (app-only, or delegated with silent refresh)."""
+    if _app_only():
+        _require_client_id()
+        app = msal.ConfidentialClientApplication(
+            config.MSAL_CLIENT_ID,
+            client_credential=config.MSAL_CLIENT_SECRET,
+            authority=_authority(),
+        )
+        result = app.acquire_token_for_client(scopes=_APP_SCOPES)
+        if "access_token" not in result:
+            raise RuntimeError(f"App-only auth failed: {result.get('error_description', result)}")
+        return result["access_token"]
+
     cache = _load_cache()
     app = _app(cache)
     accounts = app.get_accounts()
@@ -79,7 +122,7 @@ def get_access_token() -> str:
             f"No cached MSAL account. Run `python -m email_parsing.outlook auth` "
             f"once to authenticate (cache: {config.MSAL_CACHE_FILE})."
         )
-    result = app.acquire_token_silent(_SCOPES, account=accounts[0])
+    result = app.acquire_token_silent(_DELEGATED_SCOPES, account=accounts[0])
     if not result or "access_token" not in result:
         raise RuntimeError("Cached MSAL token expired — re-run `outlook auth` to refresh.")
     _save_cache(cache)
@@ -88,9 +131,12 @@ def get_access_token() -> str:
 
 def authenticate_interactive() -> None:
     """Run the device-code flow and persist the token cache."""
+    if _app_only():
+        print("MSAL_CLIENT_SECRET is set: app-only mode needs no interactive login.")
+        return
     cache = _load_cache()
     app = _app(cache)
-    flow = app.initiate_device_flow(scopes=_SCOPES)
+    flow = app.initiate_device_flow(scopes=_DELEGATED_SCOPES)
     if "user_code" not in flow:
         raise RuntimeError(f"Could not start device flow: {flow!r}")
     print(flow["message"])
@@ -129,7 +175,7 @@ def fetch_recent(count: int = 10, *, unread_only: bool = False) -> list[dict[str
         params["$filter"] = "isRead eq false"
     with httpx.Client(timeout=30) as client:
         resp = client.get(
-            _GRAPH_INBOX,
+            f"{_mailbox_base()}/mailFolders/Inbox/messages",
             params=params,
             headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
         )
@@ -155,7 +201,7 @@ def mark_as_read(message_id: str) -> None:
     token = get_access_token()
     with httpx.Client(timeout=30) as client:
         resp = client.patch(
-            f"https://graph.microsoft.com/v1.0/me/messages/{message_id}",
+            f"{_mailbox_base()}/messages/{message_id}",
             json={"isRead": True},
             headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         )
@@ -165,7 +211,7 @@ def mark_as_read(message_id: str) -> None:
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
 def _cli() -> int:
-    ap = argparse.ArgumentParser(description="Outlook mailbox helpers")
+    ap = argparse.ArgumentParser(description="Microsoft 365 mailbox helpers")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("auth", help="Run device-code flow to populate the token cache")
     sub.add_parser("export-cache", help="Print base64-encoded cache for CI secret use")

@@ -29,10 +29,19 @@ LLM_REASONING_EFFORT: str = _env("LLM_REASONING_EFFORT", "low")
 LLM_STRICT_SCHEMA: bool = _env("LLM_STRICT_SCHEMA", "true").lower() == "true"
 LLM_TIMEOUT_SECONDS: float = float(_env("LLM_TIMEOUT_SECONDS", "60"))
 
-# ── Microsoft Graph (personal Outlook via MSAL device-code) ──────────────────
-# Application (client) ID of the registered Microsoft Entra app.
-MSAL_CLIENT_ID: str = _env("MSAL_CLIENT_ID", "9242462a-6cbe-43fe-9baf-54967057b1f1")
-# Path to MSAL token cache file. CI can instead provide MSAL_TOKEN_CACHE_B64.
+# ── Microsoft Graph (funding mailbox in Microsoft 365) ───────────────────────
+# The mailbox is a work account (Microsoft 365), not a personal Outlook account.
+MAILBOX_USER: str = _env("MAILBOX_USER", "fundingopps@music4wellbeing.org.uk")
+# Directory (tenant) ID, or a verified domain name, of the Microsoft 365 tenant.
+MSAL_TENANT_ID: str = _env("MSAL_TENANT_ID", "music4wellbeing.org.uk")
+# Application (client) ID of an Entra app registered in that tenant. No default:
+# the old app was for personal accounts and cannot sign in to a work account.
+MSAL_CLIENT_ID: str = _env("MSAL_CLIENT_ID")
+# If set, the pipeline uses app-only access (client credentials, no user login).
+# This is the recommended mode for CI. If empty, it uses the device-code login.
+MSAL_CLIENT_SECRET: str = _env("MSAL_CLIENT_SECRET")
+# Device-code mode only: path to the MSAL token cache file. CI can instead
+# provide MSAL_TOKEN_CACHE_B64.
 MSAL_CACHE_FILE: str = _env(
     "MSAL_CACHE_FILE",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "token_cache.bin"),
