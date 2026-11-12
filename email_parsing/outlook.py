@@ -23,6 +23,7 @@ import sys
 from io import BytesIO
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
 import msal
@@ -162,14 +163,51 @@ def authenticate_interactive() -> None:
 
 # ── Email fetch ──────────────────────────────────────────────────────────────
 
-def _clean_markdown(text: str) -> str:
-    """Remove empty table scaffolding that HTML layout tables leave behind.
+# Characters with no visible meaning. Newsletters use them as invisible "preheader"
+# padding. Non-breaking spaces become normal spaces.
+_INVISIBLE = re.compile("[\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u00ad\u034f\ufeff]")
+# Query parameters that only track clicks. They never change which page opens.
+_TRACKING_PARAMS = {
+    "fbclid", "gclid", "dclid", "msclkid", "mc_cid", "mc_eid", "mkt_tok",
+    "_hsenc", "_hsmi", "hsctatracking", "igshid", "yclid", "vero_id", "oly_enc_id",
+}
+_URL = re.compile(r"https?://[^\s)\]>\"']+")
 
-    Newsletters use tables for layout. MarkItDown turns them into markdown tables
-    with hundreds of empty cells ("| | | |" and "| --- | --- |"). They carry no
-    information but fill the LLM's character budget.
+
+def _strip_tracking(url: str) -> str:
+    """Remove click-tracking parameters (utm_*, fbclid, ...) from a URL."""
+    parts = urlsplit(url)
+    if not parts.query:
+        return url
+    pairs = parse_qsl(parts.query, keep_blank_values=True)
+    kept = [
+        (k, v) for k, v in pairs
+        if not (k.lower().startswith("utm_") or k.lower() in _TRACKING_PARAMS)
+    ]
+    if len(kept) == len(pairs):
+        return url  # nothing to remove: keep the URL byte-for-byte
+    return urlunsplit(parts._replace(query=urlencode(kept)))
+
+
+def _clean_markdown(text: str) -> str:
+    """Remove noise from converted email text without removing information.
+
+    Removed: empty table cells and separator rows, invisible characters,
+    images (the alt text stays), links with no text, click-tracking URL
+    parameters, repeated spaces, repeated identical lines, horizontal rules.
+    Kept on purpose: all words, numbers, dates, links with text, and footers.
     """
+    text = _INVISIBLE.sub("", text.replace("\u00a0", " "))
+    # Images: keep the alt text only. A link around an image keeps its URL
+    # only if the image has alt text.
+    text = re.sub(r"!\[([^\]]*)\]\([^)]*\)", lambda m: m.group(1).strip(), text)
+    text = re.sub(r"\[\s*\]\([^)]*\)", "", text)  # links with no text
+    text = _URL.sub(lambda m: _strip_tracking(m.group(0)), text)
+    # [https://x](https://x) -> https://x
+    text = re.sub(r"\[(https?://[^\]\s]+)\]\(\1\)", r"\1", text)
+
     out: list[str] = []
+    previous = ""
     for line in text.splitlines():
         stripped = line.lstrip("> ")
         prefix = line[: len(line) - len(stripped)]
@@ -178,14 +216,23 @@ def _clean_markdown(text: str) -> str:
             body = re.sub(r"\|(?:\s*\|)+", "|", body)  # "|  |  | x |" -> "| x |"
             if re.fullmatch(r"[\s|:\-]*", body):  # only pipes, dashes, colons
                 body = ""
-        out.append(prefix + body if body else "")
+        if re.fullmatch(r"[-*_=~]{3,}", body.strip()):  # horizontal rule
+            body = ""
+        body = re.sub(r"(?<=\S)[ \t]{2,}", " ", body)  # repeated spaces inside a line
+        line_out = prefix + body if body else ""
+        if line_out and line_out == previous:
+            continue  # repeated identical line (e.g. a repeated "View in browser")
+        out.append(line_out)
+        previous = line_out
     return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
 
 
 def _html_to_markdown(html: str) -> str:
     try:
         text = _markitdown.convert_stream(BytesIO(html.encode("utf-8")), file_extension=".html").text_content
-        return _clean_markdown(text)
+        cleaned = _clean_markdown(text)
+        logger.info("Email text cleaned: %d -> %d characters", len(text), len(cleaned))
+        return cleaned
     except Exception as exc:
         logger.warning("markitdown failed (%s) — falling back to tag strip", exc)
         return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()

@@ -30,3 +30,37 @@ def test_clean_markdown_removes_empty_table_scaffolding():
 
 def test_clean_markdown_keeps_normal_text():
     assert outlook._clean_markdown("Hello\n\n\n\nWorld") == "Hello\n\nWorld"
+
+
+def test_clean_markdown_removes_noise_but_keeps_information():
+    text = (
+        "​‌͏​  \n"
+        "![Big Give logo](https://img.example/logo.png)\n"
+        "![](https://img.example/pixel.gif)\n"
+        "[![](https://img.example/banner.png)](https://track.example/click/abc)\n"
+        "Kent  Community   Fund: grants of  £5,000 until 30 November 2026.\n"
+        "[Apply here](https://kent.example/apply?round=3&utm_source=news&utm_medium=email&fbclid=zz)\n"
+        "[https://kent.example/guide](https://kent.example/guide)\n"
+        "---\n"
+        "View in browser\n"
+        "View in browser\n"
+        "Contact: grants@kent.example\n"
+    )
+    out = outlook._clean_markdown(text)
+    # Noise is gone.
+    assert "​" not in out and "pixel.gif" not in out and "banner.png" not in out
+    assert "utm_" not in out and "fbclid" not in out and "---" not in out
+    assert out.count("View in browser") == 1
+    assert "Kent Community Fund" in out  # repeated spaces collapsed
+    # Information is kept.
+    assert "Big Give logo" in out  # image alt text
+    assert "£5,000 until 30 November 2026" in out
+    assert "[Apply here](https://kent.example/apply?round=3)" in out  # real param kept
+    assert "\n[https://" not in out and "https://kent.example/guide" in out
+    assert "grants@kent.example" in out
+
+
+def test_strip_tracking_leaves_clean_urls_untouched():
+    url = "https://example.org/a?x=1&y=%20two"
+    assert outlook._strip_tracking(url) == url
+    assert outlook._strip_tracking("https://example.org/?utm_source=a") == "https://example.org/"
