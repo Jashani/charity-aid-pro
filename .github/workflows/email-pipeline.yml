@@ -66,6 +66,7 @@ jobs:
           LLM_API_KEY:          ${{ secrets.LLM_API_KEY }}
           # Mailbox login: set MSAL_CLIENT_SECRET (app-only, recommended) OR
           # MSAL_TOKEN_CACHE_B64 (device-code login). One of the two is enough.
+          MSAL_CLIENT_ID:       ${{ secrets.MSAL_CLIENT_ID }}
           MSAL_CLIENT_SECRET:   ${{ secrets.MSAL_CLIENT_SECRET }}
           MSAL_TOKEN_CACHE_B64: ${{ secrets.MSAL_TOKEN_CACHE_B64 }}
           AIRTABLE_TOKEN:       ${{ secrets.AIRTABLE_TOKEN }}
@@ -76,7 +77,6 @@ jobs:
           LLM_MODEL:                    ${{ vars.LLM_MODEL }}
           LLM_REASONING_EFFORT:         ${{ vars.LLM_REASONING_EFFORT }}
           LLM_STRICT_SCHEMA:            ${{ vars.LLM_STRICT_SCHEMA }}
-          MSAL_CLIENT_ID:               ${{ vars.MSAL_CLIENT_ID }}
           MSAL_TENANT_ID:               ${{ vars.MSAL_TENANT_ID }}
           MAILBOX_USER:                 ${{ vars.MAILBOX_USER }}
           AIRTABLE_BASE_ID:             ${{ vars.AIRTABLE_BASE_ID }}

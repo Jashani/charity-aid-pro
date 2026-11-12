@@ -188,6 +188,7 @@ repository and to the Airtable base.
 |---|---|
 | `AIRTABLE_TOKEN` | The token from procedure 5.1 |
 | `LLM_API_KEY` | Groq API key (starts with `gsk_`) |
+| `MSAL_CLIENT_ID` | **Required.** The Application (client) ID of the Entra app in the Music4Wellbeing tenant. See procedure 5.3. |
 | `MSAL_CLIENT_SECRET` | The Entra app client secret (app-only mode, recommended). See procedure 5.3. |
 | `MSAL_TOKEN_CACHE_B64` | Only for device-code mode: the login cache. See procedure 5.3. |
 
@@ -199,7 +200,6 @@ repository and to the Airtable base.
 | `LLM_MODEL` | `openai/gpt-oss-120b` |
 | `LLM_REASONING_EFFORT` | `low` |
 | `LLM_STRICT_SCHEMA` | `true` |
-| `MSAL_CLIENT_ID` | **Required.** The Application (client) ID of the Entra app in the Music4Wellbeing tenant |
 | `MSAL_TENANT_ID` | `music4wellbeing.org.uk` (or the Directory/tenant ID) |
 | `MAILBOX_USER` | `fundingopps@music4wellbeing.org.uk` |
 | `AIRTABLE_BASE_ID` | `apptkzNqMPnlzdyhA` (Music4Wellbeing) |
@@ -216,7 +216,7 @@ A Microsoft 365 administrator does steps 1 to 5.
    registration**. Name: `charity-aid-pro`. Account type: **this
    organizational directory only**.
 2. Copy the **Application (client) ID** and the **Directory (tenant) ID**.
-   Set the client ID as the GitHub variable `MSAL_CLIENT_ID`.
+   Set the client ID as the GitHub secret `MSAL_CLIENT_ID`. The tenant ID is optional (the default is the domain name).
 3. Go to **Certificates & secrets → New client secret**. Copy the secret
    **value**. Set it as the GitHub secret `MSAL_CLIENT_SECRET`. The secret
    expires (maximum 24 months). Make a calendar reminder to replace it.
@@ -369,7 +369,7 @@ The pipeline reads these environment variables ([config.py](email_parsing/config
 | `AIRTABLE_TOKEN` | Yes, for the write | — | Airtable personal access token |
 | `AIRTABLE_BASE_ID` | No | `apptkzNqMPnlzdyhA` | Airtable base ID |
 | `AIRTABLE_OPPORTUNITIES_TABLE` | No | `tbla8L8gUX6xN1XeO` | "Opportunities" table ID |
-| `MSAL_CLIENT_ID` | Yes | — | Entra app (client) ID in the Music4Wellbeing tenant |
+| `MSAL_CLIENT_ID` | Yes, in GitHub (secret) | — | Entra app (client) ID in the Music4Wellbeing tenant |
 | `MSAL_TENANT_ID` | No | `music4wellbeing.org.uk` | Entra tenant ID or domain |
 | `MAILBOX_USER` | No | `fundingopps@music4wellbeing.org.uk` | Mailbox to read (app-only mode) |
 | `MSAL_CLIENT_SECRET` | Yes, in GitHub (app-only) | — | Entra app client secret. If set, app-only mode is used. |
