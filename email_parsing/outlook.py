@@ -122,9 +122,21 @@ def get_access_token() -> str:
             f"No cached MSAL account. Run `python -m email_parsing.outlook auth` "
             f"once to authenticate (cache: {config.MSAL_CACHE_FILE})."
         )
-    result = app.acquire_token_silent(_DELEGATED_SCOPES, account=accounts[0])
+    # The cache may hold more than one account (e.g. an old personal one).
+    wanted = config.MAILBOX_USER.lower()
+    account = next(
+        (a for a in accounts if (a.get("username") or "").lower() == wanted), None
+    )
+    if account is None:
+        names = ", ".join(a.get("username", "?") for a in accounts)
+        raise RuntimeError(
+            f"The MSAL cache has no account for {config.MAILBOX_USER} (found: {names}). "
+            f"Re-run `python -m email_parsing.outlook auth` and sign in as {config.MAILBOX_USER}."
+        )
+    result = app.acquire_token_silent(_DELEGATED_SCOPES, account=account)
     if not result or "access_token" not in result:
-        raise RuntimeError("Cached MSAL token expired — re-run `outlook auth` to refresh.")
+        detail = (result or {}).get("error_description") or "no token returned (cache missing, wrong app, or login expired)"
+        raise RuntimeError(f"Silent MSAL login failed — re-run `outlook auth`. Reason: {detail}")
     _save_cache(cache)
     return result["access_token"]
 
