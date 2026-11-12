@@ -64,3 +64,13 @@ def test_strip_tracking_leaves_clean_urls_untouched():
     url = "https://example.org/a?x=1&y=%20two"
     assert outlook._strip_tracking(url) == url
     assert outlook._strip_tracking("https://example.org/?utm_source=a") == "https://example.org/"
+
+
+def test_clean_markdown_removes_separator_cells_inside_text_lines():
+    sep = "| --- " * 300
+    line = f"> {sep}| Intro text | [View in browser](https://x.example/a) | --- | --- | **Dear Plum,** | --- | Kent Fund: £5,000 | --- |"
+    out = outlook._clean_markdown(line)
+    assert "---" not in out
+    assert "Intro text" in out and "[View in browser](https://x.example/a)" in out
+    assert "**Dear Plum,**" in out and "Kent Fund: £5,000" in out
+    assert len(out) < 200

@@ -213,6 +213,8 @@ def _clean_markdown(text: str) -> str:
         prefix = line[: len(line) - len(stripped)]
         body = stripped.rstrip()
         if "|" in body:
+            # Separator cells anywhere in the line: "| --- | --- | x | --- |" -> "| x |"
+            body = re.sub(r"\|\s*:?-{3,}:?\s*(?=\|)", "", body)
             body = re.sub(r"\|(?:\s*\|)+", "|", body)  # "|  |  | x |" -> "| x |"
             if re.fullmatch(r"[\s|:\-]*", body):  # only pipes, dashes, colons
                 body = ""
