@@ -74,3 +74,12 @@ def test_clean_markdown_removes_separator_cells_inside_text_lines():
     assert "Intro text" in out and "[View in browser](https://x.example/a)" in out
     assert "**Dear Plum,**" in out and "Kent Fund: £5,000" in out
     assert len(out) < 200
+
+
+def test_clean_markdown_removes_divider_runs_but_keeps_urls():
+    url = "https://example.org/a----b____c"
+    text = f"Fund one. ................................ | [Fund two]({url}) | Note ...... end"
+    cleaned = outlook._clean_markdown(text)
+    assert "...." not in cleaned
+    assert url in cleaned
+    assert "Fund one." in cleaned and "Note" in cleaned and "end" in cleaned

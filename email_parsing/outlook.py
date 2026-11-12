@@ -172,6 +172,9 @@ _TRACKING_PARAMS = {
     "_hsenc", "_hsmi", "hsctatracking", "igshid", "yclid", "vero_id", "oly_enc_id",
 }
 _URL = re.compile(r"https?://[^\s)\]>\"']+")
+# A URL (kept as it is) or a run of 4 or more of the same divider character,
+# for example "......" or "______" used as a line between sections.
+_DIVIDER_RUN = re.compile(r"(https?://[^\s)\]>\"']+)|([.\-_=~*\u2022\u00b7])\2{3,}")
 
 
 def _strip_tracking(url: str) -> str:
@@ -194,7 +197,8 @@ def _clean_markdown(text: str) -> str:
 
     Removed: empty table cells and separator rows, invisible characters,
     images (the alt text stays), links with no text, click-tracking URL
-    parameters, repeated spaces, repeated identical lines, horizontal rules.
+    parameters, runs of divider characters ("......"), repeated spaces,
+    repeated identical lines, horizontal rules.
     Kept on purpose: all words, numbers, dates, links with text, and footers.
     """
     text = _INVISIBLE.sub("", text.replace("\u00a0", " "))
@@ -220,6 +224,11 @@ def _clean_markdown(text: str) -> str:
                 body = ""
         if re.fullmatch(r"[-*_=~]{3,}", body.strip()):  # horizontal rule
             body = ""
+        body = _DIVIDER_RUN.sub(lambda m: m.group(1) or " ", body)
+        if "|" in body:
+            body = re.sub(r"\|(?:\s*\|)+", "|", body)  # cells that the step above emptied
+            if re.fullmatch(r"[\s|]*", body):
+                body = ""
         body = re.sub(r"(?<=\S)[ \t]{2,}", " ", body)  # repeated spaces inside a line
         line_out = prefix + body if body else ""
         if line_out and line_out == previous:

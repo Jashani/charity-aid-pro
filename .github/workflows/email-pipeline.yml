@@ -77,7 +77,8 @@ jobs:
           LLM_MODEL:                    ${{ vars.LLM_MODEL }}
           LLM_REASONING_EFFORT:         ${{ vars.LLM_REASONING_EFFORT }}
           LLM_STRICT_SCHEMA:            ${{ vars.LLM_STRICT_SCHEMA }}
-          EMAIL_MAX_CHARS:              ${{ vars.EMAIL_MAX_CHARS }}
+          EMAIL_CHUNK_CHARS:            ${{ vars.EMAIL_CHUNK_CHARS }}
+          EMAIL_MAX_CHUNKS:             ${{ vars.EMAIL_MAX_CHUNKS }}
           MSAL_TENANT_ID:               ${{ vars.MSAL_TENANT_ID }}
           MAILBOX_USER:                 ${{ vars.MAILBOX_USER }}
           AIRTABLE_BASE_ID:             ${{ vars.AIRTABLE_BASE_ID }}

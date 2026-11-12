@@ -16,6 +16,7 @@ This document uses ASD-STE100 (Simplified Technical English).
 | `run.py` | Command-line entry point. It does fetch → parse → score → write → mark as read. |
 | `outlook.py` | Microsoft 365 login (app-only, or MSAL device code) and email fetch (Microsoft Graph) |
 | `llm.py` | OpenAI-compatible LLM client and `parse_email()` |
+| `chunking.py` | Short link placeholders and splitting of long emails into parts |
 | `scoring.py` | Geography check, eligibility check and score |
 | `storage.py` | Airtable write. It adds new records and does not change records that are already in the table. |
 | `schema.py` | Pydantic data models |

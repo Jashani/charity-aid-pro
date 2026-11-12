@@ -47,6 +47,7 @@ charity-aid-pro/
 ├── email_parsing/                  # The email pipeline
 │   ├── run.py                      # Command-line entry point
 │   ├── outlook.py                  # Outlook login and email fetch (Microsoft Graph)
+│   ├── chunking.py                 # Short link placeholders and splitting of long emails
 │   ├── llm.py                      # LLM client and email parse
 │   ├── scoring.py                  # Geography check, eligibility check, score
 │   ├── storage.py                  # Airtable write
@@ -366,7 +367,8 @@ The pipeline reads these environment variables ([config.py](email_parsing/config
 | `LLM_REASONING_EFFORT` | No | `low` | Reasoning effort for reasoning models. Set `off` for a model that does not reason. |
 | `LLM_STRICT_SCHEMA` | No | `true` | `true`: the LLM must give JSON that agrees with the schema. Set `false` for a model that does not support structured outputs. |
 | `LLM_TIMEOUT_SECONDS` | No | `60` | Time limit for one LLM call |
-| `EMAIL_MAX_CHARS` | No | `8000` | Maximum characters of email text sent to the LLM. The Groq free plan limits the tokens for each minute, so raise it with care. |
+| `EMAIL_CHUNK_CHARS` | No | `8000` | Size of one part of a long email, in characters. The pipeline sends each part to the LLM in its own request. The Groq free plan limits the tokens for each minute, so raise it with care. |
+| `EMAIL_MAX_CHUNKS` | No | `12` | Maximum number of parts for one email. The pipeline does not send the text after the last part and writes a warning. |
 | `AIRTABLE_TOKEN` | Yes, for the write | — | Airtable personal access token |
 | `AIRTABLE_BASE_ID` | No | `apptkzNqMPnlzdyhA` | Airtable base ID |
 | `AIRTABLE_OPPORTUNITIES_TABLE` | No | `tbla8L8gUX6xN1XeO` | "Opportunities" table ID |
@@ -395,6 +397,14 @@ limits are 8,000 tokens each minute and 200,000 tokens each day
 ([Groq rate limits](https://console.groq.com/docs/rate-limits)). A test on
 18 October 2026 used approximately 6,500 tokens for each email. Thus the
 pipeline can process approximately 30 emails each day.
+
+A long email, such as a newsletter with many funds, is cut into parts of
+`EMAIL_CHUNK_CHARS` characters. Each part goes to the LLM in its own request,
+and the pipeline merges the results. Thus a long newsletter uses more tokens
+(an estimate for one newsletter of 66,000 characters: 7 requests and
+approximately 35,000 tokens) and takes several minutes because of the limit
+for each minute. Long links are replaced with short placeholders before the
+LLM request. The pipeline puts the original links back in the results.
 
 - If the pipeline goes above the limit for each minute, it waits and tries
   again.
