@@ -14,7 +14,7 @@ This document uses ASD-STE100 (Simplified Technical English).
 ```
 ┌──────────────────────┐    ┌──────────────────────────┐    ┌───────────────────────────┐
 │ Funding mailbox      │    │ Email pipeline           │    │ Airtable                  │
-│ (personal Outlook)   │───▶│ GitHub Actions, daily    │───▶│ Base "Music4Wellbeing"    │
+│ (Microsoft 365)      │───▶│ GitHub Actions, daily    │───▶│ Base "Music4Wellbeing"    │
 │                      │    │ 09:17 UTC                │    │ Table "Opportunities"     │
 └──────────────────────┘    │ fetch → parse → score    │    │                           │
                             │ → write → mark as read   │    └───────────────────────────┘
@@ -30,7 +30,7 @@ The system has these parts:
 
 | Part | Function |
 |---|---|
-| Funding mailbox | A personal Outlook account. Funders send emails to this mailbox. |
+| Funding mailbox | A Microsoft 365 mailbox (`fundingopps@music4wellbeing.org.uk`). Funders send emails to this mailbox. |
 | Email pipeline | A Python program (`email_parsing/`). A GitHub Actions workflow runs it one time each day. |
 | LLM | A large language model. It reads each email and gives the opportunity data and the score. |
 | Airtable | The "Opportunities" table keeps all opportunities. Your team works on them in Airtable. |
@@ -47,6 +47,7 @@ charity-aid-pro/
 ├── email_parsing/                  # The email pipeline
 │   ├── run.py                      # Command-line entry point
 │   ├── outlook.py                  # Outlook login and email fetch (Microsoft Graph)
+│   ├── chunking.py                 # Short link placeholders and splitting of long emails
 │   ├── llm.py                      # LLM client and email parse
 │   ├── scoring.py                  # Geography check, eligibility check, score
 │   ├── storage.py                  # Airtable write
@@ -188,7 +189,9 @@ repository and to the Airtable base.
 |---|---|
 | `AIRTABLE_TOKEN` | The token from procedure 5.1 |
 | `LLM_API_KEY` | Groq API key (starts with `gsk_`) |
-| `MSAL_TOKEN_CACHE_B64` | The Outlook login cache. See procedure 5.3. |
+| `MSAL_CLIENT_ID` | **Required.** The Application (client) ID of the Entra app in the Music4Wellbeing tenant. See procedure 5.3. |
+| `MSAL_CLIENT_SECRET` | The Entra app client secret (app-only mode, recommended). See procedure 5.3. |
+| `MSAL_TOKEN_CACHE_B64` | Only for device-code mode: the login cache. See procedure 5.3. |
 
 4. Optional: set these variables only if you must change the default values.
 
@@ -198,36 +201,50 @@ repository and to the Airtable base.
 | `LLM_MODEL` | `openai/gpt-oss-120b` |
 | `LLM_REASONING_EFFORT` | `low` |
 | `LLM_STRICT_SCHEMA` | `true` |
-| `MSAL_CLIENT_ID` | The registered Microsoft Entra app ID |
+| `MSAL_TENANT_ID` | `music4wellbeing.org.uk` (or the Directory/tenant ID) |
+| `MAILBOX_USER` | `fundingopps@music4wellbeing.org.uk` |
 | `AIRTABLE_BASE_ID` | `apptkzNqMPnlzdyhA` (Music4Wellbeing) |
 | `AIRTABLE_OPPORTUNITIES_TABLE` | `tbla8L8gUX6xN1XeO` (Opportunities) |
 
-### 5.3 Log in to the Outlook mailbox
+### 5.3 Connect the Microsoft 365 mailbox
 
-Do this procedure for the first setup. Do it again if the login expires.
+The mailbox is a work account. Use app-only access. It needs no user login
+and no token that expires.
 
-1. Install Python 3.11 or later.
-2. Install the dependencies:
+A Microsoft 365 administrator does steps 1 to 5.
 
-   ```sh
-   pip install -r email_parsing/requirements.txt
-   ```
+1. In the Microsoft Entra admin center, go to **App registrations → New
+   registration**. Name: `charity-aid-pro`. Account type: **this
+   organizational directory only**.
+2. Copy the **Application (client) ID** and the **Directory (tenant) ID**.
+   Set the client ID as the GitHub secret `MSAL_CLIENT_ID`. The tenant ID is optional (the default is the domain name).
+3. Go to **Certificates & secrets → New client secret**. Copy the secret
+   **value**. Set it as the GitHub secret `MSAL_CLIENT_SECRET`. The secret
+   expires (maximum 24 months). Make a calendar reminder to replace it.
+4. Go to **API permissions → Add a permission → Microsoft Graph →
+   Application permissions → `Mail.ReadWrite`**. Click **Grant admin
+   consent**.
+5. Limit the app to the one mailbox. Without this step, the app can read
+   every mailbox in the organization. Use Exchange Online PowerShell
+   ([RBAC for Applications](https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac)):
+   create a service principal for the app, a management scope for
+   `fundingopps@music4wellbeing.org.uk`, and a role assignment
+   `Application Mail.ReadWrite` with that scope.
 
-3. From the repository root, start the login:
+Optional, instead of steps 3 to 5: device-code mode (delegated login as the
+mailbox user). Leave `MSAL_CLIENT_SECRET` empty. In the app registration, add
+the delegated permission `Mail.ReadWrite` and enable **Allow public client
+flows**. Then:
 
-   ```sh
-   python -m email_parsing.outlook auth
-   ```
+```sh
+pip install -r email_parsing/requirements.txt
+python -m email_parsing.outlook auth
+python -m email_parsing.outlook export-cache
+```
 
-4. Open the link that the command shows. Type the code.
-5. Log in with the funding mailbox account.
-6. Export the login cache:
-
-   ```sh
-   python -m email_parsing.outlook export-cache
-   ```
-
-7. Copy the output into the GitHub secret `MSAL_TOKEN_CACHE_B64`.
+Log in as `fundingopps@music4wellbeing.org.uk`. Copy the output into the
+GitHub secret `MSAL_TOKEN_CACHE_B64`. Repeat when the login expires. The
+organization policy (MFA, Conditional Access) can block this mode.
 
 > **NOTE:** The login cache file is `token_cache.bin` in the repository root.
 > Git ignores this file. Do not commit it.
@@ -350,12 +367,17 @@ The pipeline reads these environment variables ([config.py](email_parsing/config
 | `LLM_REASONING_EFFORT` | No | `low` | Reasoning effort for reasoning models. Set `off` for a model that does not reason. |
 | `LLM_STRICT_SCHEMA` | No | `true` | `true`: the LLM must give JSON that agrees with the schema. Set `false` for a model that does not support structured outputs. |
 | `LLM_TIMEOUT_SECONDS` | No | `60` | Time limit for one LLM call |
+| `EMAIL_CHUNK_CHARS` | No | `8000` | Size of one part of a long email, in characters. The pipeline sends each part to the LLM in its own request. The Groq free plan limits the tokens for each minute, so raise it with care. |
+| `EMAIL_MAX_CHUNKS` | No | `12` | Maximum number of parts for one email. The pipeline does not send the text after the last part and writes a warning. |
 | `AIRTABLE_TOKEN` | Yes, for the write | — | Airtable personal access token |
 | `AIRTABLE_BASE_ID` | No | `apptkzNqMPnlzdyhA` | Airtable base ID |
 | `AIRTABLE_OPPORTUNITIES_TABLE` | No | `tbla8L8gUX6xN1XeO` | "Opportunities" table ID |
-| `MSAL_CLIENT_ID` | No | The registered Entra app ID | Change only if you register a new app |
+| `MSAL_CLIENT_ID` | Yes, in GitHub (secret) | — | Entra app (client) ID in the Music4Wellbeing tenant |
+| `MSAL_TENANT_ID` | No | `music4wellbeing.org.uk` | Entra tenant ID or domain |
+| `MAILBOX_USER` | No | `fundingopps@music4wellbeing.org.uk` | Mailbox to read (app-only mode) |
+| `MSAL_CLIENT_SECRET` | Yes, in GitHub (app-only) | — | Entra app client secret. If set, app-only mode is used. |
 | `MSAL_CACHE_FILE` | No | `<repo>/token_cache.bin` | Local Outlook login cache |
-| `MSAL_TOKEN_CACHE_B64` | Yes, in GitHub | — | Base64 Outlook login cache. It overrides the file. |
+| `MSAL_TOKEN_CACHE_B64` | Device-code mode only | — | Base64 login cache. It overrides the file. |
 
 The pipeline uses table IDs, not table names. Thus you can rename the
 tables in Airtable. You cannot rename the fields (see section 3).
@@ -375,6 +397,14 @@ limits are 8,000 tokens each minute and 200,000 tokens each day
 ([Groq rate limits](https://console.groq.com/docs/rate-limits)). A test on
 18 October 2026 used approximately 6,500 tokens for each email. Thus the
 pipeline can process approximately 30 emails each day.
+
+A long email, such as a newsletter with many funds, is cut into parts of
+`EMAIL_CHUNK_CHARS` characters. Each part goes to the LLM in its own request,
+and the pipeline merges the results. Thus a long newsletter uses more tokens
+(an estimate for one newsletter of 66,000 characters: 7 requests and
+approximately 35,000 tokens) and takes several minutes because of the limit
+for each minute. Long links are replaced with short placeholders before the
+LLM request. The pipeline puts the original links back in the results.
 
 - If the pipeline goes above the limit for each minute, it waits and tries
   again.
@@ -420,7 +450,9 @@ and writes a warning in the log.
 | The workflow log shows `Missing required env vars ... AIRTABLE_TOKEN` | The secret is not set | Do procedure 5.2. |
 | The log shows `Airtable POST ... failed (401)` or `(403)` | The token is incorrect, expired, or has no access to the base | Do procedure 5.1 again. Then update the secret. |
 | The log shows `Airtable POST ... failed (422)` | A field name or a field type in Airtable changed | Make the field names and types the same as section 3. |
-| The log shows `No cached MSAL account` or `Cached MSAL token expired` | The Outlook login expired | Do procedure 5.3 again. |
+| The log shows `No cached MSAL account` or `Cached MSAL token expired` | The device-code login expired | Do procedure 5.3 again, or use app-only mode. |
+| The log shows `App-only auth failed` | Wrong client ID, tenant or secret, or the secret expired | Check procedure 5.3 steps 2 and 3. |
+| The log shows a Graph `403` or `ErrorAccessDenied` | No admin consent, or the RBAC scope does not include the mailbox | Check procedure 5.3 steps 4 and 5. |
 | No new records in Airtable | No unread emails, or the LLM found no relevant opportunities | Look at the workflow log. Each email has a line with the classification and the number of opportunities. |
 | The same email is processed each day | The write to Airtable fails, so the email stays unread | Look at the workflow log for the error. |
 | The log shows `Daily LLM token limit reached — stopping` | The Groq free plan limit for each day is used | Do nothing. The next run processes the unread emails. See section 9.1. |

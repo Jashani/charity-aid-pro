@@ -1,7 +1,8 @@
 """LLM-driven email parsing.
 
-Single call: classify + extract. The model returns PARSE_SCHEMA. For
-NEWSLETTER / IRRELEVANT classifications, opportunities is `[]`.
+Classify + extract. The model returns PARSE_SCHEMA. For NEWSLETTER /
+IRRELEVANT classifications, opportunities is `[]`. A long email is cut into
+parts (see chunking.py), one call per part, and the results are merged.
 
 Each prompt in prompts/ is the system message; the data (email, opportunity)
 goes in the user message so the model treats it as data, not instructions.
@@ -12,13 +13,14 @@ from __future__ import annotations
 import json
 import logging
 import re
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, get_args
 
 from openai import OpenAI
 
-from . import config
+from . import chunking, config
 from .schema import FundingOpportunity, FundingType, ParseResult
 
 
@@ -194,32 +196,95 @@ def _to_opportunity(item: dict[str, Any], idx: int) -> FundingOpportunity:
     return FundingOpportunity(**item)
 
 
+def _parse_part(user: str, label: str) -> dict[str, Any]:
+    """Send one part of an email to the LLM. Returns the answer as a dict."""
+    # Length only at INFO: the CI logs of a public repository are public.
+    logger.info("parse%s: sending %d characters of email text to the LLM", label, len(user))
+    raw = _chat(load_prompt("parse"), user, stage="parse", schema=PARSE_SCHEMA)
+    # The email text and the raw answer appear only with LOG_LEVEL=DEBUG (local runs).
+    logger.debug("parse%s: text sent to the LLM:\n%s", label, user)
+    logger.debug("parse%s: raw LLM answer:\n%s", label, raw)
+    data = _parse_json(raw, stage="parse")
+    if not isinstance(data, dict):
+        raise LLMError("parse: response is not a JSON object")
+    return data
+
+
+def _merge_classification(answers: list[dict[str, Any]], has_opportunities: bool) -> tuple[str, float]:
+    """Choose one classification for an email that was sent in several parts."""
+    def confidence(item: dict[str, Any]) -> float:
+        return float(item.get("confidence", 0.0))
+
+    if has_opportunities:
+        label = "FUNDING_OPPORTUNITY"
+        matching = [a for a in answers if a.get("classification") == label]
+    elif any(a.get("classification") != "IRRELEVANT" for a in answers):
+        # Some part is about funding, but no opportunity is left.
+        label = "NEWSLETTER"
+        matching = [a for a in answers if a.get("classification") != "IRRELEVANT"]
+    else:
+        label = "IRRELEVANT"
+        matching = answers
+    return label, max((confidence(a) for a in matching), default=0.0)
+
+
+def _mark_if_closed(opp: FundingOpportunity, email_date: str) -> None:
+    """Dismiss *opp* if its deadline is a date before the email date.
+
+    The prompt tells the model to remove closed opportunities, but it does not
+    do this every time. This check always works, and it saves the scoring calls.
+    A deadline that is not a date (for example "rolling") is not checked.
+    """
+    try:
+        deadline = date.fromisoformat(opp.deadline)
+        received = date.fromisoformat(email_date)
+    except ValueError:
+        return
+    if deadline < received:
+        opp.status = "dismissed"
+        opp.dismissal_reason = f"Closed: the deadline {deadline} is before the email date {received}."
+
+
 def parse_email(email: dict[str, Any]) -> ParseResult:
-    """Classify and extract opportunities from a single email in one LLM call."""
-    user = (
+    """Classify and extract opportunities from a single email.
+
+    A long email is cut into parts. Each part is sent in its own request, and the
+    results are merged. A failed part fails the whole email, so the email stays
+    unread and no opportunity is lost.
+    """
+    header = (
         f"Email date: {(email.get('receivedDateTime') or '')[:10] or 'unknown'}\n"
         f"From: {email.get('from', '')}\n"
         f"Subject: {email.get('subject', '')}\n\n"
-        f"{(email.get('body') or '')[:8000]}"
     )
+    body, links = chunking.shorten_links(email.get("body") or "")
+    parts = chunking.split_text(body, config.EMAIL_CHUNK_CHARS)
+    if len(parts) > config.EMAIL_MAX_CHUNKS:
+        logger.warning(
+            "parse: email has %d parts. Only the first %d are sent (EMAIL_MAX_CHUNKS).",
+            len(parts), config.EMAIL_MAX_CHUNKS,
+        )
+        parts = parts[:config.EMAIL_MAX_CHUNKS]
 
-    raw = _chat(load_prompt("parse"), user, stage="parse", schema=PARSE_SCHEMA)
-    data = _parse_json(raw, stage="parse")
-
-    if not isinstance(data, dict):
-        raise LLMError("parse: response is not a JSON object")
-
-    classification = data.get("classification", "IRRELEVANT")
-    confidence = float(data.get("confidence", 0.0))
-    raw_opps = data.get("opportunities", []) or []
-    if not isinstance(raw_opps, list):
-        raw_opps = [raw_opps]
+    answers: list[dict[str, Any]] = []
+    raw_opps: list[Any] = []
+    for number, part in enumerate(parts, 1):
+        many = len(parts) > 1
+        label = f" part {number}/{len(parts)}" if many else ""
+        user = (f"Part {number} of {len(parts)}\n" if many else "") + header + part
+        data = _parse_part(user, label)
+        answers.append(data)
+        found = data.get("opportunities", []) or []
+        raw_opps.extend(found if isinstance(found, list) else [found])
 
     opportunities: list[FundingOpportunity] = []
     seen: set[tuple[str, str]] = set()
-    for idx, item in enumerate(raw_opps):
+    for item in raw_opps:
         try:
-            opp = _to_opportunity(item, idx)
+            item = chunking.restore_links(item, links)
+            if isinstance(item, dict) and not item.get("website"):
+                item["website"] = None
+            opp = _to_opportunity(item, len(opportunities))
         except Exception as exc:
             logger.warning("Skipping malformed opportunity %s: %s", item, exc)
             continue
@@ -230,7 +295,14 @@ def parse_email(email: dict[str, Any]) -> ParseResult:
             continue
         seen.add(key)
         _clear_wrong_contact(opp, email.get("from", ""))
+        _mark_if_closed(opp, (email.get("receivedDateTime") or "")[:10])
         opportunities.append(opp)
+
+    if len(answers) == 1:
+        classification = answers[0].get("classification", "IRRELEVANT")
+        confidence = float(answers[0].get("confidence", 0.0))
+    else:
+        classification, confidence = _merge_classification(answers, bool(opportunities))
 
     return ParseResult(
         classification=classification,

@@ -236,7 +236,11 @@ def _score_with_llm(opp: FundingOpportunity) -> dict[str, Any]:
 def score_opportunity(opp: FundingOpportunity) -> FundingOpportunity:
     """Run gating + scoring on *opp*, mutate it in place, and return it.
 
-    A failed check sets status "dismissed". The caller drops dismissed opportunities."""
+    A failed check sets status "dismissed". The caller drops dismissed opportunities.
+    An opportunity that is already dismissed (for example a closed one) is not scored."""
+
+    if opp.status == "dismissed":
+        return opp
 
     # 1. Geography gate
     geo = _geography_with_llm(opp.location)
