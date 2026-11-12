@@ -366,6 +366,7 @@ The pipeline reads these environment variables ([config.py](email_parsing/config
 | `LLM_REASONING_EFFORT` | No | `low` | Reasoning effort for reasoning models. Set `off` for a model that does not reason. |
 | `LLM_STRICT_SCHEMA` | No | `true` | `true`: the LLM must give JSON that agrees with the schema. Set `false` for a model that does not support structured outputs. |
 | `LLM_TIMEOUT_SECONDS` | No | `60` | Time limit for one LLM call |
+| `EMAIL_MAX_CHARS` | No | `8000` | Maximum characters of email text sent to the LLM. The Groq free plan limits the tokens for each minute, so raise it with care. |
 | `AIRTABLE_TOKEN` | Yes, for the write | — | Airtable personal access token |
 | `AIRTABLE_BASE_ID` | No | `apptkzNqMPnlzdyhA` | Airtable base ID |
 | `AIRTABLE_OPPORTUNITIES_TABLE` | No | `tbla8L8gUX6xN1XeO` | "Opportunities" table ID |

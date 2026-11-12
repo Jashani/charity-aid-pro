@@ -28,6 +28,10 @@ LLM_REASONING_EFFORT: str = _env("LLM_REASONING_EFFORT", "low")
 # outputs; they then get plain JSON mode.
 LLM_STRICT_SCHEMA: bool = _env("LLM_STRICT_SCHEMA", "true").lower() == "true"
 LLM_TIMEOUT_SECONDS: float = float(_env("LLM_TIMEOUT_SECONDS", "60"))
+# Maximum characters of email text sent to the LLM. The Groq free plan allows
+# about 8,000 tokens per minute for this model, and the prompt itself uses about
+# 1,500, so raise this value with care.
+EMAIL_MAX_CHARS: int = int(_env("EMAIL_MAX_CHARS", "8000"))
 
 # ── Microsoft Graph (funding mailbox in Microsoft 365) ───────────────────────
 # The mailbox is a work account (Microsoft 365), not a personal Outlook account.

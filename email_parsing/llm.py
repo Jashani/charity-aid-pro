@@ -200,7 +200,7 @@ def parse_email(email: dict[str, Any]) -> ParseResult:
         f"Email date: {(email.get('receivedDateTime') or '')[:10] or 'unknown'}\n"
         f"From: {email.get('from', '')}\n"
         f"Subject: {email.get('subject', '')}\n\n"
-        f"{(email.get('body') or '')[:8000]}"
+        f"{(email.get('body') or '')[:config.EMAIL_MAX_CHARS]}"
     )
 
     # Length only at INFO: the CI logs of a public repository are public.

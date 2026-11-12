@@ -162,9 +162,30 @@ def authenticate_interactive() -> None:
 
 # ── Email fetch ──────────────────────────────────────────────────────────────
 
+def _clean_markdown(text: str) -> str:
+    """Remove empty table scaffolding that HTML layout tables leave behind.
+
+    Newsletters use tables for layout. MarkItDown turns them into markdown tables
+    with hundreds of empty cells ("| | | |" and "| --- | --- |"). They carry no
+    information but fill the LLM's character budget.
+    """
+    out: list[str] = []
+    for line in text.splitlines():
+        stripped = line.lstrip("> ")
+        prefix = line[: len(line) - len(stripped)]
+        body = stripped.rstrip()
+        if "|" in body:
+            body = re.sub(r"\|(?:\s*\|)+", "|", body)  # "|  |  | x |" -> "| x |"
+            if re.fullmatch(r"[\s|:\-]*", body):  # only pipes, dashes, colons
+                body = ""
+        out.append(prefix + body if body else "")
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
+
+
 def _html_to_markdown(html: str) -> str:
     try:
-        return _markitdown.convert_stream(BytesIO(html.encode("utf-8")), file_extension=".html").text_content
+        text = _markitdown.convert_stream(BytesIO(html.encode("utf-8")), file_extension=".html").text_content
+        return _clean_markdown(text)
     except Exception as exc:
         logger.warning("markitdown failed (%s) — falling back to tag strip", exc)
         return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()
