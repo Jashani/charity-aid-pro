@@ -203,7 +203,12 @@ def parse_email(email: dict[str, Any]) -> ParseResult:
         f"{(email.get('body') or '')[:8000]}"
     )
 
+    # Length only at INFO: the CI logs of a public repository are public.
+    logger.info("parse: sending %d characters of email text to the LLM", len(user))
     raw = _chat(load_prompt("parse"), user, stage="parse", schema=PARSE_SCHEMA)
+    # The email text and the raw answer appear only with LOG_LEVEL=DEBUG (local runs).
+    logger.debug("parse: text sent to the LLM:\n%s", user)
+    logger.debug("parse: raw LLM answer:\n%s", raw)
     data = _parse_json(raw, stage="parse")
 
     if not isinstance(data, dict):
