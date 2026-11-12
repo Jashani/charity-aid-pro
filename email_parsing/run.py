@@ -35,13 +35,15 @@ def _parse_received(value: str) -> datetime:
 
 def process_email(email: dict, *, do_score: bool = True) -> ParsedEmail:
     parse_result = llm.parse_email(email)
-    kept, dismissed = parse_result.opportunities, []
+    # Closed opportunities are already dismissed by parse_email and are not scored.
+    kept = [o for o in parse_result.opportunities if o.status != "dismissed"]
+    dismissed = [o for o in parse_result.opportunities if o.status == "dismissed"]
 
     if do_score and kept:
         scoring.score_all(kept)
         # Dismissed opportunities are not written to Airtable. They stay in
         # the run log and the JSON payload so a person can check them.
-        dismissed = [o for o in kept if o.status == "dismissed"]
+        dismissed += [o for o in kept if o.status == "dismissed"]
         kept = [o for o in kept if o.status != "dismissed"]
 
     return ParsedEmail(

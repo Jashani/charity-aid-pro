@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, get_args
@@ -227,6 +228,23 @@ def _merge_classification(answers: list[dict[str, Any]], has_opportunities: bool
     return label, max((confidence(a) for a in matching), default=0.0)
 
 
+def _mark_if_closed(opp: FundingOpportunity, email_date: str) -> None:
+    """Dismiss *opp* if its deadline is a date before the email date.
+
+    The prompt tells the model to remove closed opportunities, but it does not
+    do this every time. This check always works, and it saves the scoring calls.
+    A deadline that is not a date (for example "rolling") is not checked.
+    """
+    try:
+        deadline = date.fromisoformat(opp.deadline)
+        received = date.fromisoformat(email_date)
+    except ValueError:
+        return
+    if deadline < received:
+        opp.status = "dismissed"
+        opp.dismissal_reason = f"Closed: the deadline {deadline} is before the email date {received}."
+
+
 def parse_email(email: dict[str, Any]) -> ParseResult:
     """Classify and extract opportunities from a single email.
 
@@ -277,6 +295,7 @@ def parse_email(email: dict[str, Any]) -> ParseResult:
             continue
         seen.add(key)
         _clear_wrong_contact(opp, email.get("from", ""))
+        _mark_if_closed(opp, (email.get("receivedDateTime") or "")[:10])
         opportunities.append(opp)
 
     if len(answers) == 1:

@@ -144,3 +144,41 @@ def test_parse_email_limits_number_of_parts(monkeypatch):
     monkeypatch.setattr(llm, "_chat", fake_chat)
     llm.parse_email({"id": "e", "subject": "s", "body": " | ".join("word " * 60 for _ in range(10))})
     assert len(calls) == 2
+
+
+def test_closed_opportunity_is_dismissed_before_scoring(monkeypatch):
+    answer = {
+        "classification": "FUNDING_OPPORTUNITY", "confidence": 0.9,
+        "opportunities": [
+            _item("Closed Trust", deadline="2026-11-08"),
+            _item("Open Trust", deadline="2026-11-30"),
+            _item("Rolling Trust", deadline="rolling"),
+            _item("Unknown Trust", deadline="unknown"),
+        ],
+    }
+    monkeypatch.setattr(llm, "_chat", lambda system, user, *, stage, schema: json.dumps(answer))
+    result = llm.parse_email({"id": "e", "subject": "s", "body": "x", "receivedDateTime": "2026-11-12T10:00:00Z"})
+    status = {o.funder_name: o.status for o in result.opportunities}
+    assert status == {
+        "Closed Trust": "dismissed", "Open Trust": "identified",
+        "Rolling Trust": "identified", "Unknown Trust": "identified",
+    }
+    assert "before the email date" in result.opportunities[0].dismissal_reason
+
+
+def test_process_email_does_not_score_closed_opportunities(monkeypatch):
+    from email_parsing import run, scoring
+
+    answer = {
+        "classification": "FUNDING_OPPORTUNITY", "confidence": 0.9,
+        "opportunities": [_item("Closed Trust", deadline="2026-11-08"), _item("Open Trust", deadline="2026-11-30")],
+    }
+    monkeypatch.setattr(llm, "_chat", lambda system, user, *, stage, schema: json.dumps(answer))
+    scored = []
+    monkeypatch.setattr(scoring, "score_opportunity", lambda o: scored.append(o.funder_name) or o)
+    parsed = run.process_email(
+        {"id": "e", "subject": "s", "body": "x", "receivedDateTime": "2026-11-12T10:00:00Z"}
+    )
+    assert scored == ["Open Trust"]
+    assert [o.funder_name for o in parsed.opportunities] == ["Open Trust"]
+    assert [o.funder_name for o in parsed.dismissed] == ["Closed Trust"]
